@@ -584,9 +584,9 @@
         <div class="mode-title"><span id="modeLocalTitle">ローカル対戦</span><span class="mode-badge" id="modeLocalBadge">プレイ可能</span></div>
         <div class="mode-desc" id="modeLocalDesc">同じ画面で黒番・白番を交互に操作して対戦します。</div>
       </button>
-      <button class="mode-card" id="modeBtnOnlineCustom" disabled>
-        <div class="mode-title"><span id="modeOnlineCustomTitle">オンラインカスタムマッチ</span><span class="mode-badge" id="modeOnlineCustomBadge">準備中</span></div>
-        <div class="mode-desc" id="modeOnlineCustomDesc">ルームコード対戦は正式なオンライン基盤の実装後に公開予定です。</div>
+      <button class="mode-card" id="modeBtnOnlineCustom">
+        <div class="mode-title"><span id="modeOnlineCustomTitle">オンラインカスタムマッチ</span><span class="mode-badge" id="modeOnlineCustomBadge">プレイ可能</span></div>
+        <div class="mode-desc" id="modeOnlineCustomDesc">ルームコードを発行して、友達とオンラインで対戦します。</div>
       </button>
       <button class="mode-card" id="modeBtnOnlinePublic" disabled>
         <div class="mode-title"><span id="modeOnlinePublicTitle">オンライン（公開マッチング）</span><span class="mode-badge" id="modeOnlinePublicBadge">準備中</span></div>
@@ -730,6 +730,62 @@
 
 </div><!-- /#screen-game -->
 
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
+import { getDatabase, ref, get, set, onValue, off, runTransaction, remove } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAMl2UHUHzcNirkITC6vN3_08VEsIfQm74",
+  authDomain: "psy-reversi.firebaseapp.com",
+  projectId: "psy-reversi",
+  storageBucket: "psy-reversi.firebasestorage.app",
+  messagingSenderId: "945288960309",
+  appId: "1:945288960309:web:b9d1165caa050c786bd47c",
+  databaseURL: "https://psy-reversi-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+let authReadyResolve;
+const authReady = new Promise(r => authReadyResolve = r);
+onAuthStateChanged(auth, user => { if(user) authReadyResolve(user); });
+signInAnonymously(auth).catch(err => { console.error('Firebase anonymous auth failed', err); authReadyResolve(null); });
+
+let unsubscribeRoom = null;
+window.psyFirebase = {
+  async ready(){ return await authReady; },
+  async getRoom(code){ const snap=await get(ref(db,'rooms/'+code)); return snap.exists()?snap.val():null; },
+  async setRoom(code,data){ await set(ref(db,'rooms/'+code),data); return true; },
+  async claimGuest(code){
+    const roomRef=ref(db,'rooms/'+code);
+    const user=await authReady; if(!user) throw new Error('auth');
+    const result=await runTransaction(roomRef, room=>{
+      if(!room || !room.state) return;
+      if(room.players && room.players.white && room.players.white !== user.uid) return;
+      room.players = room.players || {}; room.players.white=user.uid;
+      room.state.joined = room.state.joined || {1:true,2:false}; room.state.joined[2]=true;
+      room.state.seq=(room.state.seq||0)+1; return room;
+    }, {applyLocally:false});
+    if(!result.committed) return null; return result.snapshot.val();
+  },
+  async createRoom(code,state){ const user=await authReady; if(!user) throw new Error('auth'); await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,createdAt:Date.now()}); return true; },
+  async pushState(code,state,role){
+    const user=await authReady; if(!user) throw new Error('auth');
+    const roomRef=ref(db,'rooms/'+code);
+    const result=await runTransaction(roomRef, room=>{
+      if(!room) return; const expected=role===1?room.players?.black:room.players?.white; if(expected!==user.uid) return;
+      const currentSeq=room.state?.seq||0; if((state.seq||0)<=currentSeq) state.seq=currentSeq+1; room.state=state; return room;
+    }, {applyLocally:false});
+    return result.committed;
+  },
+  listen(code,cb){ if(unsubscribeRoom) unsubscribeRoom(); const r=ref(db,'rooms/'+code); unsubscribeRoom=onValue(r,s=>cb(s.exists()?s.val():null)); },
+  unlisten(){ if(unsubscribeRoom){ unsubscribeRoom(); unsubscribeRoom=null; } },
+  async removeRoom(code){ try{ await remove(ref(db,'rooms/'+code)); }catch(e){} }
+};
+window.dispatchEvent(new Event('psyFirebaseReady'));
+</script>
 <script>
 const SIZE = 8;
 const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
@@ -770,8 +826,8 @@ const STR = {
     subtitle:'通常のオセロ + 15種のスキルカードで駆け引きを',
     modeLocalTitle:'ローカル対戦', modeLocalBadge:'プレイ可能',
     modeLocalDesc:'同じ画面で黒番・白番を交互に操作して対戦します。',
-    modeOnlineCustomTitle:'オンラインカスタムマッチ', modeOnlineCustomBadge:'準備中',
-    modeOnlineCustomDesc:'ルームコード対戦は正式なオンライン基盤の実装後に公開予定です。',
+    modeOnlineCustomTitle:'オンラインカスタムマッチ', modeOnlineCustomBadge:'プレイ可能',
+    modeOnlineCustomDesc:'ルームコードを発行して、友達とオンラインで対戦します。',
     modeOnlinePublicTitle:'オンライン（公開マッチング）', modeOnlinePublicBadge:'準備中',
     modeOnlinePublicDesc:'誰でも参加できる自動マッチングは今後実装予定です。',
     lobbyH1:'オンラインカスタムマッチ',
@@ -820,8 +876,8 @@ const STR = {
     subtitle:'Classic Othello + 15 skill cards for extra strategy',
     modeLocalTitle:'Local Match', modeLocalBadge:'Available',
     modeLocalDesc:'Play both Black and White on the same screen, taking turns.',
-    modeOnlineCustomTitle:'Online Custom Match', modeOnlineCustomBadge:'Coming Soon',
-    modeOnlineCustomDesc:'Room-code online play will be released after the online backend is ready.',
+    modeOnlineCustomTitle:'Online Custom Match', modeOnlineCustomBadge:'Available',
+    modeOnlineCustomDesc:'Create a room code and play online with a friend.',
     modeOnlinePublicTitle:'Online (Public Matchmaking)', modeOnlinePublicBadge:'Coming Soon',
     modeOnlinePublicDesc:'Open matchmaking with random opponents is planned for a future update.',
     lobbyH1:'Online Custom Match',
@@ -1935,147 +1991,43 @@ function updateOnlineInfoBar(){
     tr('onlineInfoConnected').replace('{code}', onlineRoomCode).replace('{role}', role);
 }
 
-// ---------- Online sync (shared storage) ----------
-function storageAvailable(){
-  return typeof window !== 'undefined' && typeof window.storage !== 'undefined';
+// ---------- Online sync (Firebase Realtime Database) ----------
+function storageAvailable(){ return !!window.psyFirebase; }
+async function waitForFirebase(){
+  if(window.psyFirebase) return await window.psyFirebase.ready();
+  await new Promise(resolve=>window.addEventListener('psyFirebaseReady', resolve, {once:true}));
+  return await window.psyFirebase.ready();
 }
-
-function generateRoomCode(){
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let s = '';
-  for(let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
-  return s;
-}
-
-function serializeState(seq){
-  return {
-    seq, board, current, hands, deck, discard, protectedCells, boundCells,
-    bits, placementsLeft, cardUsesLeft, doubleTapCostCap, freeDropActive,
-    lastMindRead, passStreak, turnNumber, gameOver, idSeed, redrawUsedThisTurn,
-    joined: onlineJoined
-  };
-}
-
+function generateRoomCode(){ const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<5;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
+function serializeState(seq){ return {seq,board,current,hands,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,lastMindRead,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined}; }
 function applyRemoteState(data){
-  board = data.board; current = data.current; hands = data.hands; deck = data.deck;
-  discard = data.discard; protectedCells = data.protectedCells; boundCells = data.boundCells;
-  bits = data.bits; placementsLeft = data.placementsLeft; cardUsesLeft = data.cardUsesLeft;
-  doubleTapCostCap = data.doubleTapCostCap; freeDropActive = data.freeDropActive;
-  lastMindRead = data.lastMindRead; passStreak = data.passStreak; turnNumber = data.turnNumber;
-  gameOver = data.gameOver; idSeed = data.idSeed;
-  redrawUsedThisTurn = !!data.redrawUsedThisTurn;
-  onlineJoined = data.joined || onlineJoined;
-  onlineWaitingForOpponent = !(onlineJoined[1] && onlineJoined[2]);
-  onlineLastAppliedSeq = data.seq;
-  pendingCard = null; // never trust a mid-selection state from a stale local session
-  redrawPending = false;
+  board=data.board; current=data.current; hands=data.hands; deck=data.deck; discard=data.discard; protectedCells=data.protectedCells||{}; boundCells=data.boundCells||{}; bits=data.bits; placementsLeft=data.placementsLeft; cardUsesLeft=data.cardUsesLeft; doubleTapCostCap=data.doubleTapCostCap; freeDropActive=data.freeDropActive; lastMindRead=data.lastMindRead; passStreak=data.passStreak; turnNumber=data.turnNumber; gameOver=data.gameOver; idSeed=data.idSeed; redrawUsedThisTurn=!!data.redrawUsedThisTurn; onlineJoined=data.joined||onlineJoined; onlineWaitingForOpponent=!(onlineJoined[1]&&onlineJoined[2]); onlineLastAppliedSeq=data.seq||0; pendingCard=null; redrawPending=false;
 }
-
 async function pushOnlineState(){
-  if(!onlineRoomCode || !storageAvailable()) return;
-  try{
-    const seq = onlineLastAppliedSeq + 1;
-    const state = serializeState(seq);
-    const result = await window.storage.set('room:'+onlineRoomCode, JSON.stringify(state), true);
-    if(result){ onlineLastAppliedSeq = seq; }
-  } catch(e){ console.error('online push error', e); }
+  if(!onlineRoomCode||!window.psyFirebase) return;
+  try{ const seq=onlineLastAppliedSeq+1; const state=serializeState(seq); const ok=await window.psyFirebase.pushState(onlineRoomCode,state,myPlayerNumber); if(ok) onlineLastAppliedSeq=state.seq; }catch(e){ console.error('online push error',e); }
 }
-
-async function pollOnlineState(){
-  if(!onlineRoomCode || !storageAvailable()) return;
-  try{
-    const result = await window.storage.get('room:'+onlineRoomCode, true);
-    if(!result) return;
-    const data = JSON.parse(result.value);
-    if(data.seq > onlineLastAppliedSeq){
-      const wasWaiting = onlineWaitingForOpponent;
-      applyRemoteState(data);
-      if(wasWaiting && !onlineWaitingForOpponent) hideWaitingOverlay();
-      updateOnlineInfoBar();
-      render();
-    }
-  } catch(e){ /* transient read error, ignore and retry next interval */ }
-}
-
 function startPolling(){
   stopPolling();
-  onlinePollTimer = setInterval(pollOnlineState, 2500);
+  if(!window.psyFirebase||!onlineRoomCode) return;
+  window.psyFirebase.listen(onlineRoomCode, room=>{
+    if(!room||!room.state) return; const data=room.state;
+    if((data.seq||0)>onlineLastAppliedSeq){ const wasWaiting=onlineWaitingForOpponent; applyRemoteState(data); if(wasWaiting&&!onlineWaitingForOpponent) hideWaitingOverlay(); updateOnlineInfoBar(); render(); }
+  });
 }
-function stopPolling(){
-  if(onlinePollTimer){ clearInterval(onlinePollTimer); onlinePollTimer = null; }
-}
-
+function stopPolling(){ if(window.psyFirebase) window.psyFirebase.unlisten(); if(onlinePollTimer){clearInterval(onlinePollTimer);onlinePollTimer=null;} }
 async function createRoom(){
-  const msgEl = document.getElementById('lobbyMsg');
-  if(!storageAvailable()){
-    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage'); return;
-  }
-  msgEl.className='lobby-msg'; msgEl.textContent = tr('lobbyCreating');
-  const code = generateRoomCode();
-  onlineRoomCode = code;
-  myPlayerNumber = 1;
-  onlineMode = true;
-  onlineJoined = {1:true, 2:false};
-  onlineWaitingForOpponent = true;
-  onlineLastAppliedSeq = 0;
-  initGame();
-  try{
-    const seq = 1;
-    const state = serializeState(seq);
-    const result = await window.storage.set('room:'+code, JSON.stringify(state), true);
-    if(!result) throw new Error('write failed');
-    onlineLastAppliedSeq = seq;
-  } catch(e){
-    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage');
-    onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
-    return;
-  }
-  showGameScreen();
-  updateOnlineInfoBar();
-  showWaitingOverlay(code);
-  startPolling();
+  const msgEl=document.getElementById('lobbyMsg'); msgEl.className='lobby-msg'; msgEl.textContent=tr('lobbyCreating');
+  try{ const user=await waitForFirebase(); if(!user) throw new Error('auth'); let code,existing; do{code=generateRoomCode();existing=await window.psyFirebase.getRoom(code);}while(existing);
+    onlineRoomCode=code; myPlayerNumber=1; onlineMode=true; onlineJoined={1:true,2:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0; initGame(); const state=serializeState(1); await window.psyFirebase.createRoom(code,state); onlineLastAppliedSeq=1; showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
+  }catch(e){console.error(e);msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorStorage');onlineMode=false;onlineRoomCode=null;myPlayerNumber=null;}
 }
-
 async function joinRoom(){
-  const input = document.getElementById('joinCodeInput');
-  const code = input.value.trim().toUpperCase();
-  const msgEl = document.getElementById('lobbyMsg');
-  if(!code){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorNoCode'); return; }
-  if(!storageAvailable()){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage'); return; }
-  msgEl.className='lobby-msg'; msgEl.textContent = tr('lobbyJoining');
-  try{
-    const result = await window.storage.get('room:'+code, true);
-    if(!result){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorNotFound'); return; }
-    const data = JSON.parse(result.value);
-    if(data.joined && data.joined[2]){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorFull'); return; }
-    onlineRoomCode = code;
-    myPlayerNumber = 2;
-    onlineMode = true;
-    applyRemoteState(data);
-    onlineJoined[2] = true;
-    onlineWaitingForOpponent = false;
-    const seq = onlineLastAppliedSeq + 1;
-    const pushResult = await window.storage.set('room:'+code, JSON.stringify(serializeState(seq)), true);
-    if(!pushResult) throw new Error('write failed');
-    onlineLastAppliedSeq = seq;
-    showGameScreen();
-    updateOnlineInfoBar();
-    render();
-    startPolling();
-  } catch(e){
-    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage');
-  }
+  const input=document.getElementById('joinCodeInput'); const code=input.value.trim().toUpperCase(); const msgEl=document.getElementById('lobbyMsg'); if(!code){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorNoCode');return;} msgEl.className='lobby-msg';msgEl.textContent=tr('lobbyJoining');
+  try{ const user=await waitForFirebase(); if(!user) throw new Error('auth'); const existing=await window.psyFirebase.getRoom(code); if(!existing||!existing.state){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorNotFound');return;} if(existing.players&&existing.players.white&&existing.players.white!==user.uid){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorFull');return;} const room=await window.psyFirebase.claimGuest(code); if(!room){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorFull');return;} onlineRoomCode=code;myPlayerNumber=2;onlineMode=true;applyRemoteState(room.state);onlineWaitingForOpponent=false;showGameScreen();updateOnlineInfoBar();render();startPolling();
+  }catch(e){console.error(e);msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorStorage');}
 }
-
-function leaveRoom(){
-  stopPolling();
-  onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
-  onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
-  hideWaitingOverlay();
-  document.getElementById('onlineInfoBar').style.display='none';
-  document.getElementById('overlay').classList.remove('show');
-  showTitleScreen();
-}
+function leaveRoom(){ stopPolling(); onlineMode=false;onlineRoomCode=null;myPlayerNumber=null;onlineJoined={1:false,2:false};onlineWaitingForOpponent=false;hideWaitingOverlay();document.getElementById('onlineInfoBar').style.display='none';document.getElementById('overlay').classList.remove('show');showTitleScreen(); }
 
 // ---------- i18n wiring ----------
 function applyI18nStatic(){
@@ -2168,7 +2120,11 @@ document.getElementById('modeBtnLocal').addEventListener('click', ()=>{
   showGameScreen();
   initGame();
 });
-// Online custom match intentionally disabled in this public alpha build.
+document.getElementById('modeBtnOnlineCustom').addEventListener('click', async ()=>{
+  const msg=document.getElementById('lobbyMsg');
+  showLobbyScreen();
+  try{ await waitForFirebase(); }catch(e){ if(msg){msg.className='lobby-msg error';msg.textContent=tr('lobbyErrorStorage');} }
+});
 document.getElementById('lobbyBackBtn').addEventListener('click', showTitleScreen);
 document.getElementById('createRoomBtn').addEventListener('click', createRoom);
 document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
