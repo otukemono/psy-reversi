@@ -756,7 +756,20 @@ signInAnonymously(auth).catch(err => { console.error('Firebase anonymous auth fa
 let unsubscribeRoom = null;
 window.psyFirebase = {
   async ready(){ return await authReady; },
-  async getRoom(code){ const snap=await get(ref(db,'rooms/'+code)); return snap.exists()?snap.val():null; },
+  // IMPORTANT: never get(ref(db,'rooms/'+code)) as a whole node. Firebase
+  // evaluates .read at the exact requested path (cascading only from
+  // ancestors DOWN to it, never "peeking" into more-permissive descendants).
+  // Since hands/black and hands/white each carry their own restrictive
+  // .read rule and there is intentionally no blanket .read at rooms/$code,
+  // a whole-room read is denied outright even for the parts that WOULD be
+  // individually readable. Every method below reads/writes exactly the
+  // sub-path it needs instead.
+  async getRoom(code){
+    const stateSnap=await get(ref(db,'rooms/'+code+'/state'));
+    if(!stateSnap.exists()) return null;
+    const playersSnap=await get(ref(db,'rooms/'+code+'/players'));
+    return { state: stateSnap.val(), players: playersSnap.exists()?playersSnap.val():null };
+  },
   async setRoom(code,data){ await set(ref(db,'rooms/'+code),data); return true; },
   async claimGuest(code){
     const user=await authReady; if(!user) throw new Error('auth');
@@ -789,12 +802,15 @@ window.psyFirebase = {
       throw new Error('state-join-update-failed');
     }
 
-    const snap=await get(ref(db,'rooms/'+code));
-    if(!snap.exists()){
+    // Read state + our now-authorized hand as two separately-scoped reads
+    // (see note above on why a whole-room get() would be denied).
+    const finalStateSnap=await get(ref(db,'rooms/'+code+'/state'));
+    if(!finalStateSnap.exists()){
       await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
       return {ok:false, reason:'not-found'};
     }
-    return {ok:true, room:snap.val()};
+    const whiteHandSnap=await get(ref(db,'rooms/'+code+'/hands/white'));
+    return {ok:true, room:{ state: finalStateSnap.val(), hands:{ white: whiteHandSnap.exists()?whiteHandSnap.val():[] } }};
   },
   async releaseGuest(code){
     const user=await authReady; if(!user || !code) return false;
@@ -817,7 +833,16 @@ window.psyFirebase = {
   },
   async createRoom(code,state,blackHand,whiteHand){
     const user=await authReady; if(!user) throw new Error('auth');
-    await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,hands:{black:blackHand,white:whiteHand},createdAt:Date.now()});
+    // Written as separate scoped writes (not one set() on the room root) so
+    // each one is checked against its OWN .write rule. players must land
+    // first: hands/black's rule and hands/white's bootstrap-write rule both
+    // check players/black, and hands/white's rule also checks that
+    // players/white does not exist yet.
+    await set(ref(db,'rooms/'+code+'/players'), {black:user.uid});
+    await set(ref(db,'rooms/'+code+'/state'), state);
+    await set(ref(db,'rooms/'+code+'/createdAt'), Date.now());
+    await set(ref(db,'rooms/'+code+'/hands/black'), blackHand);
+    await set(ref(db,'rooms/'+code+'/hands/white'), whiteHand);
     return true;
   },
   async pushHand(code,colorKey,hand){
@@ -827,16 +852,41 @@ window.psyFirebase = {
   },
   async pushState(code,state,role){
     const user=await authReady; if(!user) throw new Error('auth');
-    const roomRef=ref(db,'rooms/'+code);
-    const result=await runTransaction(roomRef, room=>{
-      if(!room) return; const expected=role===1?room.players?.black:room.players?.white; if(expected!==user.uid) return;
-      const currentSeq=room.state?.seq||0; if((state.seq||0)<=currentSeq) state.seq=currentSeq+1; room.state=state; return room;
+    // Identity check reads players (broadly readable) separately, then the
+    // transaction itself only ever touches state - never the whole room -
+    // so it never needs read access to the other player's private hand.
+    const playersSnap=await get(ref(db,'rooms/'+code+'/players'));
+    if(!playersSnap.exists()) return false;
+    const players=playersSnap.val();
+    const expected=role===1?players.black:players.white;
+    if(expected!==user.uid) return false;
+    const stateRef=ref(db,'rooms/'+code+'/state');
+    const result=await runTransaction(stateRef, currentState=>{
+      if(!currentState) return;
+      const currentSeq=currentState.seq||0;
+      if((state.seq||0)<=currentSeq) state.seq=currentSeq+1;
+      return state;
     }, {applyLocally:false});
     return result.committed;
   },
-  listen(code,cb){ if(unsubscribeRoom) unsubscribeRoom(); const r=ref(db,'rooms/'+code); unsubscribeRoom=onValue(r,s=>cb(s.exists()?s.val():null)); },
+  listen(code,cb){
+    if(unsubscribeRoom) unsubscribeRoom();
+    // Subscribe to state only - hands are fetched once (getRoom/claimGuest)
+    // and kept locally afterward, never live-listened.
+    const r=ref(db,'rooms/'+code+'/state');
+    unsubscribeRoom=onValue(r, s=>cb(s.exists()?{state:s.val()}:null));
+  },
   unlisten(){ if(unsubscribeRoom){ unsubscribeRoom(); unsubscribeRoom=null; } },
-  async removeRoom(code){ try{ await remove(ref(db,'rooms/'+code)); }catch(e){} }
+  async removeRoom(code){
+    // Best-effort, per-path cleanup. hands/white may already be locked to
+    // the guest's uid by the time the host leaves, so that specific delete
+    // can fail without blocking the rest - this mirrors how leaveRoom()
+    // already treats the whole cleanup as non-fatal.
+    const paths=['state','players','createdAt','hands/black','hands/white'];
+    for(const p of paths){
+      try{ await remove(ref(db,'rooms/'+code+'/'+p)); }catch(e){}
+    }
+  }
 };
 window.dispatchEvent(new Event('psyFirebaseReady'));
 </script>
