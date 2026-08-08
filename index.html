@@ -1,0 +1,2189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title id="pageTitle">PSY-REVERSI｜サイリバーシ α</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700;800&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#150d08;
+    --bg-grad:#1f140c;
+    --panel:#251708;
+    --panel-2:#2f1d0d;
+    --panel-line:#4a3016;
+    --gold:#d4af37;
+    --gold-soft:#e9d18e;
+    --gold-dim:#8c7136;
+    --board:#0d4a33;
+    --board-dark:#093524;
+    --cell-line:rgba(0,0,0,.28);
+    --text:#f3ead8;
+    --text-dim:#c2b291;
+    --black-a:#4a4a4a;
+    --black-b:#050505;
+    --white-a:#ffffff;
+    --white-b:#c9c9c9;
+    --c-reverse:#3f7fae;
+    --c-block:#3f8f5e;
+    --c-slide:#9a5fc0;
+    --c-bind:#c0793f;
+    --danger:#b1453f;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    min-height:100vh;
+    background:
+      radial-gradient(ellipse at top, var(--bg-grad), var(--bg) 70%);
+    font-family:'Noto Sans JP',sans-serif;
+    color:var(--text);
+    display:flex;
+    justify-content:center;
+    padding:22px 14px 40px;
+    overflow-x:hidden;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{width:100%;max-width:920px;}
+  .cell, .card, .card-back, .discard-chip, .btn{
+    touch-action:manipulation;
+  }
+  .screen{display:none;}
+  .screen.active{display:block;}
+
+  h1{
+    font-family:'Shippori Mincho',serif;
+    font-weight:800;
+    text-align:center;
+    letter-spacing:.12em;
+    font-size:clamp(22px,4vw,32px);
+    margin:4px 0 2px;
+    color:var(--gold-soft);
+    text-shadow:0 0 18px rgba(212,175,55,.25);
+  }
+  .subtitle{
+    text-align:center;
+    color:var(--text-dim);
+    font-size:12.5px;
+    letter-spacing:.08em;
+    margin-bottom:18px;
+  }
+
+  /* --- Title / Lobby screens --- */
+  .title-wrap{
+    max-width:480px;margin:40px auto 0;
+    display:flex;flex-direction:column;align-items:center;
+  }
+  .title-lang-row{
+    display:flex;justify-content:center;margin-bottom:8px;
+  }
+  .lang-toggle{
+    display:flex;border:1px solid var(--gold-dim);border-radius:20px;overflow:hidden;
+  }
+  .lang-toggle button{
+    border:none;background:transparent;color:var(--text-dim);
+    padding:6px 16px;font-size:12px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;
+    transition:.15s;
+  }
+  .lang-toggle button.active{background:var(--gold);color:#241505;font-weight:700;}
+  .mode-list{
+    width:100%;display:flex;flex-direction:column;gap:12px;margin-top:22px;
+  }
+  .mode-card{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:14px;
+    padding:16px 18px;
+    text-align:left;
+    cursor:pointer;
+    color:var(--text);
+    font-family:'Noto Sans JP',sans-serif;
+    transition:.15s;
+  }
+  .mode-card:hover:not(:disabled){border-color:var(--gold);box-shadow:0 0 18px rgba(212,175,55,.2);transform:translateY(-2px);}
+  .mode-card:disabled{opacity:.4;cursor:not-allowed;}
+  .mode-card .mode-title{
+    font-family:'Shippori Mincho',serif;font-weight:700;font-size:16px;color:var(--gold-soft);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+  }
+  .mode-card .mode-desc{font-size:12.5px;color:var(--text-dim);margin-top:5px;line-height:1.5;}
+  .mode-card .mode-badge{
+    font-size:10.5px;border:1px solid var(--gold-dim);border-radius:10px;padding:2px 8px;color:var(--text-dim);white-space:nowrap;
+  }
+
+  .lobby-box{
+    width:100%;background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);border-radius:14px;padding:20px;margin-top:18px;
+  }
+  .lobby-section{margin-bottom:18px;}
+  .lobby-section:last-child{margin-bottom:0;}
+  .lobby-section h3{
+    font-family:'Shippori Mincho',serif;color:var(--gold-soft);font-size:14px;margin:0 0 10px;
+  }
+  .lobby-input{
+    width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--panel-line);
+    background:rgba(0,0,0,.25);color:var(--text);font-size:16px;letter-spacing:.15em;
+    text-align:center;font-family:'Shippori Mincho',serif;text-transform:uppercase;
+    margin-bottom:10px;
+  }
+  .lobby-input::placeholder{color:var(--text-dim);letter-spacing:.05em;font-family:'Noto Sans JP',sans-serif;}
+  .lobby-msg{font-size:12.5px;color:var(--text-dim);min-height:18px;margin-top:8px;}
+  .lobby-msg.error{color:#f3b6b0;}
+  .lobby-msg.ok{color:var(--gold-soft);}
+  .hr-divider{
+    display:flex;align-items:center;gap:10px;color:var(--text-dim);font-size:11px;margin:16px 0;
+  }
+  .hr-divider::before,.hr-divider::after{content:"";flex:1;height:1px;background:var(--panel-line);}
+
+  .room-info-bar{
+    background:linear-gradient(160deg,#3a2864,#241645);
+    border:1px solid var(--gold);
+    border-radius:12px;
+    padding:10px 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:10px;flex-wrap:wrap;
+    margin-bottom:10px;
+    font-size:12.5px;
+  }
+  .room-info-bar .room-code{font-family:'Shippori Mincho',serif;color:var(--gold-soft);font-size:16px;letter-spacing:.15em;font-weight:700;}
+  .waiting-overlay{
+    position:fixed;inset:0;background:rgba(8,4,2,.82);
+    display:none;align-items:center;justify-content:center;z-index:60;padding:20px;
+  }
+  .waiting-overlay.show{display:flex;}
+  .waiting-card{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--gold);border-radius:16px;padding:32px;text-align:center;max-width:320px;
+  }
+  .waiting-card .spinner{
+    width:34px;height:34px;border-radius:50%;
+    border:3px solid var(--panel-line);border-top-color:var(--gold);
+    margin:0 auto 16px;animation:spin 1s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .waiting-card .room-code-big{
+    font-family:'Shippori Mincho',serif;font-size:26px;color:var(--gold-soft);letter-spacing:.2em;margin:10px 0;font-weight:800;
+  }
+
+  .top-bar{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:6px;gap:8px;flex-wrap:wrap;
+  }
+  .top-bar-left{display:flex;align-items:center;gap:10px;}
+.deck-row{
+    display:flex;
+    align-items:stretch;
+    justify-content:center;
+    gap:10px;
+    margin-bottom:14px;
+    flex-wrap:wrap;
+  }
+
+  .hand-panel{
+    flex:1 1 300px;
+    max-width:360px;
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:14px;
+    padding:10px 12px 12px;
+    position:relative;
+    transition:box-shadow .25s, border-color .25s;
+  }
+  .hand-panel.active-turn{
+    border-color:var(--gold);
+    box-shadow:0 0 0 1px var(--gold-dim), 0 0 22px rgba(212,175,55,.25);
+  }
+  .hand-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .hand-title{
+    display:flex;align-items:center;gap:7px;
+    font-family:'Shippori Mincho',serif;
+    font-weight:700;
+    font-size:14px;
+  }
+  .stone-dot{
+    width:15px;height:15px;border-radius:50%;
+    display:inline-block;
+    box-shadow:inset -2px -2px 3px rgba(0,0,0,.4), inset 2px 2px 3px rgba(255,255,255,.15);
+  }
+  .stone-dot.b{background:radial-gradient(circle at 32% 30%, var(--black-a), var(--black-b));}
+  .stone-dot.w{background:radial-gradient(circle at 32% 30%, var(--white-a), var(--white-b));}
+  .hand-score{font-size:12px;color:var(--text-dim);}
+  .hand-cards{
+    display:flex;gap:7px;flex-wrap:wrap;
+    min-height:78px;
+  }
+  .card{
+    width:64px;height:78px;
+    border-radius:9px;
+    padding:6px 5px;
+    display:flex;flex-direction:column;justify-content:space-between;align-items:center;
+    text-align:center;
+    cursor:pointer;
+    border:1px solid rgba(255,255,255,.18);
+    color:#fff;
+    font-size:9.5px;
+    line-height:1.15;
+    user-select:none;
+    transition:transform .15s, box-shadow .15s, filter .15s;
+    position:relative;
+  }
+  .card .cost{position:absolute;top:3px;left:4px;font-size:8.5px;background:rgba(0,0,0,.4);padding:1px 4px;border-radius:6px;}
+  .card .icon{font-size:19px;}
+  .card .name{font-weight:700;font-size:9.5px;font-family:'Shippori Mincho',serif;}
+  .card.type-reverse{background:linear-gradient(160deg,#5b93c9,var(--c-reverse));}
+  .card.type-block{background:linear-gradient(160deg,#5fb283,var(--c-block));}
+  .card.type-slide{background:linear-gradient(160deg,#b784de,var(--c-slide));}
+  .card.type-bind{background:linear-gradient(160deg,#dd9a63,var(--c-bind));}
+  .card.type-swap{background:linear-gradient(160deg,#7ec9c4,#2f8f88);}
+  .card.type-twoDrop{background:linear-gradient(160deg,#e0a5c9,#b03f80);}
+  .card.type-triReverse{background:linear-gradient(160deg,#7f9de0,#3f57ae);}
+  .card.type-mindRead{background:linear-gradient(160deg,#c9b0e8,#6f3fae);}
+  .card.type-doubleTap{background:linear-gradient(160deg,#f0c98a,#c07a2f);}
+  .card.type-triBlock{background:linear-gradient(160deg,#8fd0a0,#2f8f5e);}
+  .card.type-freeDrop{background:linear-gradient(160deg,#f0908a,#ae3f3f);}
+  .card.type-recycle{background:linear-gradient(160deg,#a9d98a,#4f8f2f);}
+  .card.type-lineDomination{background:linear-gradient(160deg,#f0d18a,#b0842f);}
+  .card.type-dualLineDomination{background:linear-gradient(160deg,#f0a8d1,#ae3f8a);}
+  .card.type-doubleBind{background:linear-gradient(160deg,#f0c07a,#c0632f);}
+  .card:hover{transform:translateY(-4px);box-shadow:0 8px 14px rgba(0,0,0,.4);}
+  .card.disabled{filter:grayscale(.7) brightness(.55);cursor:not-allowed;transform:none;box-shadow:none;}
+  .card.selected{outline:3px solid var(--gold);outline-offset:1px;transform:translateY(-4px);}
+  .card-empty-slot{
+    width:64px;height:78px;border-radius:9px;
+    border:1px dashed rgba(255,255,255,.15);
+  }
+  .card-back{
+    width:64px;height:78px;border-radius:9px;
+    background:repeating-linear-gradient(135deg,#3a2812,#3a2812 4px,#33210f 4px,#33210f 8px);
+    border:1px solid var(--gold-dim);
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:var(--gold-dim);
+  }
+  .card-back.mindread-target{
+    cursor:pointer;
+    border:2px solid var(--gold-soft);
+    box-shadow:0 0 10px rgba(233,209,142,.6);
+    animation:pulse 1.1s infinite;
+  }
+  .card-back.mindread-target:hover{transform:translateY(-4px);}
+  .card.swap-target{
+    cursor:pointer;
+    outline:3px solid var(--gold-soft);
+    outline-offset:1px;
+    box-shadow:0 0 12px rgba(233,209,142,.7);
+    animation:pulse 1.1s infinite;
+  }
+  .discard-chip.recycle-target{
+    cursor:pointer;
+    outline:2px solid var(--gold-soft);
+    outline-offset:1px;
+    box-shadow:0 0 10px rgba(233,209,142,.6);
+    animation:pulse 1.1s infinite;
+    opacity:1;
+  }
+  .discard-chip.recycle-target:hover{transform:translateY(-4px);}
+  .reveal-btn{
+    display:block;
+    width:100%;
+    margin-bottom:8px;
+    font-size:11.5px;
+    padding:6px 10px;
+  }
+  .reveal-btn.revealed{background:rgba(212,175,55,.18);}
+  #modeRowBtn.mode-active, #modeColBtn.mode-active{background:var(--gold);color:#241505;border-color:var(--gold);font-weight:700;}
+  .hand-hidden-note{
+    font-size:11px;color:var(--text-dim);text-align:center;
+    padding:14px 4px;width:100%;
+  }
+
+  .deck-panel{
+    flex:0 0 130px;
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:14px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;
+    padding:10px;
+  }
+  .deck-stack{
+    width:56px;height:76px;border-radius:8px;
+    background:
+      repeating-linear-gradient(135deg,#3a2812,#3a2812 4px,#33210f 4px,#33210f 8px);
+    border:1px solid var(--gold-dim);
+    box-shadow:2px 2px 0 -1px var(--panel-2), 4px 4px 0 -1px var(--panel-line);
+    display:flex;align-items:center;justify-content:center;
+    font-size:20px;
+  }
+  .deck-label{font-size:11px;color:var(--text-dim);text-align:center;}
+  .deck-count{font-family:'Shippori Mincho',serif;color:var(--gold-soft);font-size:15px;font-weight:700;}
+
+  .board-area{
+    display:flex;justify-content:center;
+    margin:6px 0 14px;
+  }
+  .board{
+    background:linear-gradient(160deg,var(--board),var(--board-dark));
+    border-radius:10px;
+    padding:10px;
+    display:grid;
+    grid-template-columns:repeat(8,minmax(0,1fr));
+    grid-template-rows:repeat(8,minmax(0,1fr));
+    gap:3px;
+    width:min(92vw,436px);
+    aspect-ratio:1/1;
+    box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 0 0 1px rgba(212,175,55,.25);
+  }
+  .cell{
+    background:var(--board);
+    border:1px solid var(--cell-line);
+    border-radius:3px;
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    cursor:default;
+  }
+  .cell.clickable{cursor:pointer;}
+  .cell .stone{
+    width:82%;height:82%;border-radius:50%;
+    box-shadow:0 3px 5px rgba(0,0,0,.5), inset -3px -3px 5px rgba(0,0,0,.35), inset 3px 3px 5px rgba(255,255,255,.15);
+    transition:transform .25s ease;
+    animation:pop .18s ease;
+  }
+  @keyframes pop{from{transform:scale(.3);}to{transform:scale(1);}}
+  .cell .stone.b{background:radial-gradient(circle at 32% 28%, var(--black-a), var(--black-b) 75%);}
+  .cell .stone.w{background:radial-gradient(circle at 32% 28%, var(--white-a), var(--white-b) 75%);}
+  .cell .dot{
+    width:22%;height:22%;border-radius:50%;
+    background:rgba(212,175,55,.55);
+    box-shadow:0 0 8px rgba(212,175,55,.6);
+  }
+  .cell.card-target::after{
+    content:"";
+    position:absolute;inset:6%;
+    border-radius:50%;
+    border:2.5px solid var(--gold-soft);
+    box-shadow:0 0 10px rgba(233,209,142,.7);
+    animation:pulse 1.1s infinite;
+  }
+  @keyframes pulse{0%,100%{opacity:.55;}50%{opacity:1;}}
+  .cell.selected-source::after{
+    content:"";
+    position:absolute;inset:4%;
+    border-radius:50%;
+    border:2.5px solid #fff;
+  }
+  .cell.trio-preview{
+    background:rgba(212,175,55,.28) !important;
+  }
+  .cell.trio-preview::before{
+    content:"";
+    position:absolute;inset:8%;
+    border-radius:6px;
+    border:2px dashed var(--gold-soft);
+    box-shadow:0 0 10px rgba(233,209,142,.55);
+    animation:pulse 1.1s infinite;
+  }
+  .cell.protected .badge{
+    position:absolute;top:1px;right:1px;font-size:9px;
+    filter:drop-shadow(0 0 2px #000);
+  }
+  .cell.bound{
+    background:repeating-linear-gradient(45deg,var(--board),var(--board) 4px,#2a1608 4px,#2a1608 8px);
+  }
+  .cell.bound .badge{
+    font-size:15px;opacity:.85;filter:drop-shadow(0 0 2px #000);
+  }
+
+  .mindread-banner{
+    background:linear-gradient(160deg,#3a2864,#241645);
+    border:2px solid var(--gold);
+    border-radius:12px;
+    padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:12px;flex-wrap:wrap;
+    margin-bottom:10px;
+    box-shadow:0 0 24px rgba(212,175,55,.35);
+    animation:banner-in .25s ease;
+  }
+  @keyframes banner-in{
+    from{opacity:0;transform:translateY(-6px);}
+    to{opacity:1;transform:translateY(0);}
+  }
+  .mindread-banner-text{
+    font-size:13.5px;color:var(--gold-soft);flex:1 1 260px;
+    font-family:'Shippori Mincho',serif;
+    font-weight:700;
+  }
+  .status-bar{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:12px;
+    padding:12px 16px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:10px;flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .status-msg{font-size:13px;color:var(--text);flex:1 1 260px;}
+  .status-msg b{color:var(--gold-soft);}
+  .btn{
+    font-family:'Noto Sans JP',sans-serif;
+    border:1px solid var(--gold-dim);
+    background:transparent;
+    color:var(--gold-soft);
+    padding:8px 16px;
+    border-radius:20px;
+    font-size:12.5px;
+    cursor:pointer;
+    transition:.15s;
+    white-space:nowrap;
+  }
+  .btn:hover:not(:disabled){background:rgba(212,175,55,.15);}
+  .btn:disabled{opacity:.35;cursor:not-allowed;}
+  .btn.primary{background:var(--gold);color:#241505;border-color:var(--gold);font-weight:700;}
+  .btn.primary:hover{filter:brightness(1.08);}
+  .btn.danger{border-color:var(--danger);color:#f3b6b0;}
+
+  .rules{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:12px;
+    padding:4px 16px 12px;
+    font-size:12.5px;
+    color:var(--text-dim);
+    margin-bottom:10px;
+  }
+  .rules summary{cursor:pointer;padding:10px 0;font-family:'Shippori Mincho',serif;color:var(--gold-soft);font-size:13.5px;}
+  .rules ul{margin:4px 0 8px;padding-left:18px;}
+  .rules li{margin:4px 0;}
+  .rules .tag{display:inline-block;min-width:88px;font-weight:700;}
+  .tag.type-reverse{color:#8fbfeb;}
+  .tag.type-block{color:#8fdcab;}
+  .tag.type-slide{color:#d3a7f2;}
+  .tag.type-bind{color:#f0b482;}
+  .tag.cat-info{color:#8fd0e0;}
+  .tag.cat-support{color:#f0c98a;}
+  .tag.cat-defense{color:#8fdcab;}
+  .tag.cat-board{color:#d3a7f2;}
+  .tag.cat-placement{color:#f0908a;}
+  .tag.cat-domination{color:#e8b25a;}
+
+  .overlay{
+    position:fixed;inset:0;background:rgba(8,4,2,.78);
+    display:none;align-items:center;justify-content:center;z-index:50;
+    padding:20px;
+  }
+  .overlay.show{display:flex;}
+  .result-card{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--gold);
+    border-radius:16px;
+    padding:34px 40px;
+    text-align:center;
+    max-width:340px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+  }
+  .result-card h2{
+    font-family:'Shippori Mincho',serif;
+    color:var(--gold-soft);
+    font-size:22px;margin:0 0 10px;
+  }
+  .result-score{font-size:15px;margin:14px 0 20px;color:var(--text-dim);}
+  .result-score b{color:var(--text);font-size:18px;}
+
+  .discard-panel{
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:14px;
+    padding:10px 14px 12px;
+    margin-bottom:14px;
+  }
+  .discard-head{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:8px;
+  }
+  .discard-title{
+    font-family:'Shippori Mincho',serif;
+    font-weight:700;font-size:13px;color:var(--text-dim);
+  }
+  .discard-count{font-size:11.5px;color:var(--gold-soft);}
+  .discard-cards{
+    display:flex;gap:6px;flex-wrap:wrap;
+    min-height:52px;
+    max-height:150px;
+    overflow-y:auto;
+  }
+  .discard-empty-note{
+    font-size:11.5px;color:var(--text-dim);
+    padding:14px 4px;
+  }
+  .discard-chip{
+    width:52px;height:64px;border-radius:8px;
+    padding:5px 4px;
+    display:flex;flex-direction:column;justify-content:space-between;align-items:center;
+    text-align:center;
+    color:#fff;
+    font-size:8.5px;line-height:1.1;
+    opacity:.85;
+    border:1px solid rgba(255,255,255,.15);
+    flex-shrink:0;
+  }
+  .discard-chip .icon{font-size:15px;}
+  .discard-chip .name{font-weight:700;font-size:8px;font-family:'Shippori Mincho',serif;}
+  .discard-chip.owner-1{box-shadow:0 0 0 2px rgba(255,255,255,.5) inset;}
+  .discard-chip.owner-2{box-shadow:0 0 0 2px rgba(0,0,0,.55) inset;}
+  .discard-chip.type-reverse{background:linear-gradient(160deg,#5b93c9,var(--c-reverse));}
+  .discard-chip.type-block{background:linear-gradient(160deg,#5fb283,var(--c-block));}
+  .discard-chip.type-slide{background:linear-gradient(160deg,#b784de,var(--c-slide));}
+  .discard-chip.type-bind{background:linear-gradient(160deg,#dd9a63,var(--c-bind));}
+  .discard-chip.type-swap{background:linear-gradient(160deg,#7ec9c4,#2f8f88);}
+  .discard-chip.type-twoDrop{background:linear-gradient(160deg,#e0a5c9,#b03f80);}
+  .discard-chip.type-triReverse{background:linear-gradient(160deg,#7f9de0,#3f57ae);}
+  .discard-chip.type-mindRead{background:linear-gradient(160deg,#c9b0e8,#6f3fae);}
+  .discard-chip.type-doubleTap{background:linear-gradient(160deg,#f0c98a,#c07a2f);}
+  .discard-chip.type-triBlock{background:linear-gradient(160deg,#8fd0a0,#2f8f5e);}
+  .discard-chip.type-freeDrop{background:linear-gradient(160deg,#f0908a,#ae3f3f);}
+  .discard-chip.type-recycle{background:linear-gradient(160deg,#a9d98a,#4f8f2f);}
+  .discard-chip.type-lineDomination{background:linear-gradient(160deg,#f0d18a,#b0842f);}
+  .discard-chip.type-dualLineDomination{background:linear-gradient(160deg,#f0a8d1,#ae3f8a);}
+  .discard-chip.type-doubleBind{background:linear-gradient(160deg,#f0c07a,#c0632f);}
+
+  @media (max-width:520px){
+    .hand-panel{max-width:100%;}
+    .deck-panel{flex-basis:100%;flex-direction:row;justify-content:center;}
+    .btn{padding:10px 14px;font-size:13px;}
+    .status-bar{flex-direction:column;align-items:stretch;}
+    .status-bar > div{width:100%;}
+    .status-controls{justify-content:flex-start;}
+    .card, .card-back, .card-empty-slot{width:58px;height:70px;}
+    .discard-chip{width:46px;height:58px;}
+    h1{line-height:1.3;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ TITLE SCREEN ============ -->
+<div class="screen active" id="screen-title">
+  <div class="wrap title-wrap">
+    <div class="title-lang-row">
+      <div class="lang-toggle">
+        <button id="langBtnJaTitle" class="active">日本語</button>
+        <button id="langBtnEnTitle">English</button>
+      </div>
+    </div>
+    <h1 id="titleH1">PSY-REVERSI｜サイリバーシ α</h1>
+    <div class="subtitle" id="titleSubtitle">通常のオセロ + 15種のスキルカードで駆け引きを</div>
+
+    <div class="mode-list">
+      <button class="mode-card" id="modeBtnLocal">
+        <div class="mode-title"><span id="modeLocalTitle">ローカル対戦</span><span class="mode-badge" id="modeLocalBadge">プレイ可能</span></div>
+        <div class="mode-desc" id="modeLocalDesc">同じ画面で黒番・白番を交互に操作して対戦します。</div>
+      </button>
+      <button class="mode-card" id="modeBtnOnlineCustom" disabled>
+        <div class="mode-title"><span id="modeOnlineCustomTitle">オンラインカスタムマッチ</span><span class="mode-badge" id="modeOnlineCustomBadge">準備中</span></div>
+        <div class="mode-desc" id="modeOnlineCustomDesc">ルームコード対戦は正式なオンライン基盤の実装後に公開予定です。</div>
+      </button>
+      <button class="mode-card" id="modeBtnOnlinePublic" disabled>
+        <div class="mode-title"><span id="modeOnlinePublicTitle">オンライン（公開マッチング）</span><span class="mode-badge" id="modeOnlinePublicBadge">準備中</span></div>
+        <div class="mode-desc" id="modeOnlinePublicDesc">誰でも参加できる自動マッチングは今後実装予定です。</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ONLINE LOBBY SCREEN ============ -->
+<div class="screen" id="screen-lobby">
+  <div class="wrap title-wrap">
+    <div class="title-lang-row">
+      <div class="lang-toggle">
+        <button id="langBtnJaLobby" class="active">日本語</button>
+        <button id="langBtnEnLobby">English</button>
+      </div>
+    </div>
+    <h1 id="lobbyH1" style="font-size:22px;">オンラインカスタムマッチ</h1>
+
+    <div class="lobby-box">
+      <div class="lobby-section">
+        <h3 id="lobbyCreateHeading">ルームを作成する（黒番として参加）</h3>
+        <button class="btn primary" id="createRoomBtn" style="width:100%;">ルームを作成する</button>
+      </div>
+      <div class="hr-divider"><span id="lobbyOrLabel">または</span></div>
+      <div class="lobby-section">
+        <h3 id="lobbyJoinHeading">ルームコードで参加する（白番として参加）</h3>
+        <input class="lobby-input" id="joinCodeInput" maxlength="6" placeholder="ルームコードを入力">
+        <button class="btn primary" id="joinRoomBtn" style="width:100%;">参加する</button>
+      </div>
+      <div class="lobby-msg" id="lobbyMsg"></div>
+    </div>
+
+    <button class="btn" id="lobbyBackBtn" style="margin-top:18px;">← タイトルへ戻る</button>
+  </div>
+</div>
+
+<div class="waiting-overlay" id="waitingOverlay">
+  <div class="waiting-card">
+    <div class="spinner"></div>
+    <div id="waitingMsg">相手の参加を待っています…</div>
+    <div class="room-code-big" id="waitingRoomCode">-----</div>
+    <div style="font-size:11.5px;color:var(--text-dim);" id="waitingHint">このコードを対戦相手に伝えてください</div>
+    <button class="btn" id="waitingCancelBtn" style="margin-top:16px;">キャンセルしてタイトルへ</button>
+  </div>
+</div>
+
+<!-- ============ GAME SCREEN ============ -->
+<div class="screen" id="screen-game">
+<div class="wrap">
+  <div class="top-bar">
+    <div class="top-bar-left">
+      <button class="btn" id="backToTitleBtn">← <span id="backToTitleLabel">タイトルへ</span></button>
+      <span id="onlineRoomBadge" style="display:none;font-size:11.5px;color:var(--gold-soft);"></span>
+    </div>
+    <div class="lang-toggle">
+      <button id="langBtnJaGame" class="active">日本語</button>
+      <button id="langBtnEnGame">English</button>
+    </div>
+  </div>
+  <h1 id="gameH1">サイリバーシ　～オセロ×能力者カードバトル～</h1>
+  <div class="subtitle" id="gameSubtitle">通常のオセロ + 15種のスキルカードで駆け引きを</div>
+  <div class="room-info-bar" id="onlineInfoBar" style="display:none;">
+    <span id="onlineInfoText"></span>
+  </div>
+
+  <div class="deck-row">
+    <div class="hand-panel" id="handPanel1">
+      <div class="hand-head">
+        <div class="hand-title"><span class="stone-dot b"></span><span id="labelBlackPlayer">黒プレイヤー</span></div>
+        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">30</span></div>
+      </div>
+      <button class="btn reveal-btn" id="revealBtn1">🔍 <span id="revealBtn1Label">自分の手札を見る</span></button>
+      <div class="hand-cards" id="hand1"></div>
+    </div>
+
+    <div class="deck-panel">
+      <div class="deck-stack">🂠</div>
+      <div class="deck-label" id="labelDeck">共用デッキ</div>
+      <div class="deck-count"><span id="deckCount">0</span><span id="labelCountUnit1">枚</span></div>
+    </div>
+
+    <div class="hand-panel" id="handPanel2">
+      <div class="hand-head">
+        <div class="hand-title"><span class="stone-dot w"></span><span id="labelWhitePlayer">白プレイヤー</span></div>
+        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">30</span></div>
+      </div>
+      <button class="btn reveal-btn" id="revealBtn2">🔍 <span id="revealBtn2Label">自分の手札を見る</span></button>
+      <div class="hand-cards" id="hand2"></div>
+    </div>
+  </div>
+
+  <div class="discard-panel">
+    <div class="discard-head">
+      <span class="discard-title" id="labelDiscard">🗑️ 使用済みスキルカード置き場</span>
+      <span class="discard-count"><span id="discardCount">0</span><span id="labelCountUnit2">枚</span></span>
+    </div>
+    <div class="discard-cards" id="discardCards"></div>
+  </div>
+
+  <div class="board-area">
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="mindread-banner" id="mindReadBanner" style="display:none;">
+    <div class="mindread-banner-text" id="mindReadBannerText"></div>
+    <button class="btn primary" id="mindReadCloseBtn">閉じる</button>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-msg" id="statusMsg"></div>
+    <div class="status-controls" style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn" id="redrawBtn" style="display:none;">🔁 リドロー</button>
+      <button class="btn danger" id="redrawCancelBtn" style="display:none;">リドローを取り消す</button>
+      <button class="btn" id="mindReadSkipBtn" style="display:none;">交換せずスキップ</button>
+      <button class="btn" id="modeRowBtn" style="display:none;">横一列（行）で選ぶ</button>
+      <button class="btn" id="modeColBtn" style="display:none;">縦一列（列）で選ぶ</button>
+      <button class="btn primary" id="confirmBtn" style="display:none;">発動する</button>
+      <button class="btn danger" id="cancelBtn" style="display:none;">カード選択を取り消す</button>
+      <button class="btn" id="passBtn" style="display:none;">パス（配置不可）</button>
+      <button class="btn" id="restartBtn">最初からやり直す</button>
+      <button class="btn" id="leaveRoomInGameBtn" style="display:none;">ルームを退出</button>
+    </div>
+  </div>
+
+  <details class="rules">
+    <summary id="rulesSummary">ルールを見る</summary>
+    <div id="rulesContent"></div>
+  </details>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="result-card">
+    <h2 id="resultTitle">対局終了</h2>
+    <div class="result-score" id="resultScore"></div>
+    <button class="btn primary" id="playAgainBtn">もう一度対局する</button>
+    <button class="btn" id="leaveRoomAfterGameBtn" style="display:none;margin-top:8px;">ルームを退出してタイトルへ</button>
+  </div>
+</div>
+
+</div><!-- /#screen-game -->
+
+<script>
+const SIZE = 8;
+const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+let LANG = 'ja';
+
+const CARD_TYPES = {
+  reverse:{name:{ja:'リバースシフト',en:'Reverse Shift'},icon:'🔄',desc:{ja:'石を1つ選んでその場で裏返す（連鎖なし）',en:'Pick one stone and flip it in place (no chain reaction).'},cost:5,count:4},
+  block:{name:{ja:'ブロック',en:'Block'},icon:'🛡️',desc:{ja:'石を1つ選んで次の自分のターンまで裏返らなくする',en:'Pick one stone; it cannot be flipped until your next turn.'},cost:4,count:3},
+  slide:{name:{ja:'スライドシフト',en:'Slide Shift'},icon:'↔️',desc:{ja:'石を1つ選び、隣接する空マスへ1マス移動',en:'Pick one stone and slide it one square into an adjacent empty cell.'},cost:3,count:4},
+  bind:{name:{ja:'バインド',en:'Bind'},icon:'🔒',desc:{ja:'空マスを1つ選び、次の自分の配置フェーズまで封鎖',en:'Pick one empty cell; nobody can place there until your next placement phase.'},cost:4,count:4},
+  swap:{name:{ja:'スワップシフト',en:'Swap Shift'},icon:'🔀',desc:{ja:'起点になる石を1つ指定し、隣接する異なる色の石と位置を入れ替える（連鎖なし）',en:'Pick a starting stone, then swap it with an adjacent stone of the opposite color (no chain reaction).'},cost:6,count:4},
+  twoDrop:{name:{ja:'ツードロップ',en:'Two Drop'},icon:'⏫',desc:{ja:'このターンだけ石を2枚配置できる',en:'Place two stones this turn instead of one.'},cost:8,count:2},
+  triReverse:{name:{ja:'トライリバース',en:'Tri Reverse'},icon:'🎯',desc:{ja:'縦横斜めに連続する3マスを選び、石を色不問で裏返す',en:'Pick 3 consecutive cells in a line and flip whatever stones are on them, regardless of color.'},cost:6,count:3},
+  mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:3},
+  doubleTap:{name:{ja:'ダブルタップ',en:'Double Tap'},icon:'✌️',desc:{ja:'手札のコスト6以下のスキルを、このターン追加で2枚まで使用できるようにする（各コストは通常通り消費）',en:'This turn, you may use up to 2 additional skill cards costing 6 or less (each still costs its normal amount).'},cost:2,count:3},
+  triBlock:{name:{ja:'トライブロック',en:'Tri Block'},icon:'🧱',desc:{ja:'縦横斜めに連続する自分の石3つを、次の自分のターンまで全スキル効果に対して保護する',en:'Pick 3 consecutive stones of your own color in a line; they become immune to all skill effects until your next turn.'},cost:6,count:2},
+  freeDrop:{name:{ja:'フリードロップ',en:'Free Drop'},icon:'🌀',desc:{ja:'発動したターンは盤面の好きな空マスに石を置けるようになる',en:'This turn, you may place your stone on any empty cell, ignoring the usual flanking rule.'},cost:8,count:2},
+  recycle:{name:{ja:'リサイクル',en:'Recycle'},icon:'♻️',desc:{ja:'使用済みスキルカード置き場から1枚指定し、その効果を発動する（コストは対象カードのコスト+1。♻️自身は指定不可）',en:'Pick one card from the discard pile and trigger its effect again (cost = that card\u2019s cost + 1; Recycle itself cannot be targeted).'},cost:1,count:2},
+  lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty).'},cost:10,count:1},
+  dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both.'},cost:15,count:1},
+  doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2}
+};
+const LINE_DOMINATION_TYPES = ['lineDomination','dualLineDomination'];
+const MULTI_CELL_PICK_TYPES = {doubleBind: 2};
+const NO_TARGET_CARDS = ['twoDrop','freeDrop','doubleTap'];
+const STARTING_BITS = 30;
+const SKILL_LOCK_TURNS = 2;
+const REDRAW_COST = 1;
+
+function cn(type){ return CARD_TYPES[type].name[LANG]; }
+function cd(type){ return CARD_TYPES[type].desc[LANG]; }
+
+const STR = {
+  ja:{
+    pageTitle:'PSY-REVERSI｜サイリバーシ α',
+    h1:'PSY-REVERSI｜サイリバーシ α',
+    subtitle:'通常のオセロ + 15種のスキルカードで駆け引きを',
+    modeLocalTitle:'ローカル対戦', modeLocalBadge:'プレイ可能',
+    modeLocalDesc:'同じ画面で黒番・白番を交互に操作して対戦します。',
+    modeOnlineCustomTitle:'オンラインカスタムマッチ', modeOnlineCustomBadge:'準備中',
+    modeOnlineCustomDesc:'ルームコード対戦は正式なオンライン基盤の実装後に公開予定です。',
+    modeOnlinePublicTitle:'オンライン（公開マッチング）', modeOnlinePublicBadge:'準備中',
+    modeOnlinePublicDesc:'誰でも参加できる自動マッチングは今後実装予定です。',
+    lobbyH1:'オンラインカスタムマッチ',
+    lobbyCreateHeading:'ルームを作成する（黒番として参加）',
+    createRoomBtn:'ルームを作成する',
+    lobbyOrLabel:'または',
+    lobbyJoinHeading:'ルームコードで参加する（白番として参加）',
+    joinCodeInputPlaceholder:'ルームコードを入力',
+    joinRoomBtn:'参加する',
+    lobbyBackBtn:'← タイトルへ戻る',
+    lobbyCreating:'ルームを作成しています…',
+    lobbyJoining:'ルームに参加しています…',
+    lobbyErrorNoCode:'ルームコードを入力してください。',
+    lobbyErrorNotFound:'そのルームコードは見つかりませんでした。',
+    lobbyErrorFull:'このルームはすでに満員です。',
+    lobbyErrorStorage:'オンライン機能を利用できませんでした。時間を置いて再度お試しください。',
+    waitingMsg:'相手の参加を待っています…',
+    waitingHint:'このコードを対戦相手に伝えてください',
+    waitingCancelBtn:'キャンセルしてタイトルへ',
+    backToTitleLabel:'タイトルへ',
+    labelBlackPlayer:'黒プレイヤー', labelWhitePlayer:'白プレイヤー',
+    labelStones:'石', labelDeck:'共用デッキ', labelCountUnit:'枚',
+    labelDiscard:'🗑️ 使用済みスキルカード置き場',
+    revealShow:'🔍 自分の手札を見る', revealHide:'🙈 手札を隠す',
+    mindReadCloseBtn:'閉じる',
+    modeRowBtn:'横一列（行）で選ぶ', modeColBtn:'縦一列（列）で選ぶ',
+    redrawBtn:'🔁 リドロー', redrawCancelBtn:'リドローを取り消す', mindReadSkipBtn:'交換せずスキップ',
+    confirmActivate:'発動する',
+    cancelBtn:'カード選択を取り消す',
+    passBtn:'パス（配置不可）',
+    restartBtn:'最初からやり直す',
+    leaveRoomBtn:'ルームを退出',
+    leaveRoomAfterGameBtn:'ルームを退出してタイトルへ',
+    rulesSummary:'ルールを見る',
+    playAgainBtn:'もう一度対局する',
+    handHiddenNote:'手札はありません',
+    discardEmptyNote:'まだ使用されたスキルカードはありません。',
+    turnLabelBlack:'黒', turnLabelWhite:'白',
+    onlineWaitingOpponent:'相手の参加を待っています…対局はまだ始まりません。',
+    onlineInfoConnected:'ルーム {code}｜あなたは{role}番です',
+    roleBlack:'黒', roleWhite:'白'
+  },
+  en:{
+    pageTitle:'PSY-REVERSI α \u2014 Othello \u00d7 Psychic Card Battle',
+    h1:'PSY-REVERSI α　\u2014 Othello × Psychic Card Battle \u2014',
+    subtitle:'Classic Othello + 15 skill cards for extra strategy',
+    modeLocalTitle:'Local Match', modeLocalBadge:'Available',
+    modeLocalDesc:'Play both Black and White on the same screen, taking turns.',
+    modeOnlineCustomTitle:'Online Custom Match', modeOnlineCustomBadge:'Coming Soon',
+    modeOnlineCustomDesc:'Room-code online play will be released after the online backend is ready.',
+    modeOnlinePublicTitle:'Online (Public Matchmaking)', modeOnlinePublicBadge:'Coming Soon',
+    modeOnlinePublicDesc:'Open matchmaking with random opponents is planned for a future update.',
+    lobbyH1:'Online Custom Match',
+    lobbyCreateHeading:'Create a room (join as Black)',
+    createRoomBtn:'Create Room',
+    lobbyOrLabel:'or',
+    lobbyJoinHeading:'Join with a room code (join as White)',
+    joinCodeInputPlaceholder:'Enter room code',
+    joinRoomBtn:'Join Room',
+    lobbyBackBtn:'← Back to Title',
+    lobbyCreating:'Creating room…',
+    lobbyJoining:'Joining room…',
+    lobbyErrorNoCode:'Please enter a room code.',
+    lobbyErrorNotFound:'That room code was not found.',
+    lobbyErrorFull:'This room is already full.',
+    lobbyErrorStorage:'Online features are unavailable right now. Please try again later.',
+    waitingMsg:'Waiting for your opponent to join…',
+    waitingHint:'Share this code with your opponent',
+    waitingCancelBtn:'Cancel and return to Title',
+    backToTitleLabel:'Title',
+    labelBlackPlayer:'Black Player', labelWhitePlayer:'White Player',
+    labelStones:'Stones', labelDeck:'Shared Deck', labelCountUnit:'',
+    labelDiscard:'🗑️ Used Skill Cards',
+    revealShow:'🔍 View My Hand', revealHide:'🙈 Hide My Hand',
+    mindReadCloseBtn:'Close',
+    modeRowBtn:'Pick a Row', modeColBtn:'Pick a Column',
+    redrawBtn:'🔁 Redraw', redrawCancelBtn:'Cancel Redraw', mindReadSkipBtn:'Skip (no swap)',
+    confirmActivate:'Activate',
+    cancelBtn:'Cancel Card',
+    passBtn:'Pass (no moves)',
+    restartBtn:'Restart Game',
+    leaveRoomBtn:'Leave Room',
+    leaveRoomAfterGameBtn:'Leave Room to Title',
+    rulesSummary:'View Rules',
+    playAgainBtn:'Play Again',
+    handHiddenNote:'No cards in hand',
+    discardEmptyNote:'No skill cards have been used yet.',
+    turnLabelBlack:'Black', turnLabelWhite:'White',
+    onlineWaitingOpponent:'Waiting for your opponent to join… the match has not started yet.',
+    onlineInfoConnected:'Room {code} | You are {role}',
+    roleBlack:'Black', roleWhite:'White'
+  }
+};
+function tr(key){ return STR[LANG][key]; }
+
+let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending;
+
+// ---- online state ----
+let onlineMode = false;        // true when playing an online custom match
+let myPlayerNumber = null;     // 1 (black/host) or 2 (white/guest)
+let onlineRoomCode = null;
+let onlineLastAppliedSeq = 0;
+let onlinePollTimer = null;
+let onlineJoined = {1:false, 2:false};
+let onlineWaitingForOpponent = false;
+
+function cellKey(r,c){ return r+','+c; }
+
+function shuffle(arr){
+  for(let i=arr.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+
+function buildDeck(){
+  const types = Object.keys(CARD_TYPES);
+  const d = [];
+  types.forEach(t=>{
+    const n = CARD_TYPES[t].count || 5;
+    for(let i=0;i<n;i++){
+      d.push({id:'c'+(idSeed++), type:t});
+    }
+  });
+  return shuffle(d);
+}
+
+function drawCard(player){
+  if(hands[player].length >= 5) return false;
+  if(deck.length === 0){
+    if(discard.length === 0) return false;
+    deck = shuffle(discard);
+    discard = [];
+  }
+  const card = deck.pop();
+  hands[player].push(card);
+  return true;
+}
+
+function initGame(){
+  idSeed = 1;
+  board = Array.from({length:SIZE},()=>Array(SIZE).fill(0));
+  board[3][3]=2; board[3][4]=1; board[4][3]=1; board[4][4]=2;
+  current = 1;
+  hands = {1:[],2:[]};
+  deck = buildDeck();
+  discard = [];
+  protectedCells = {};
+  boundCells = {};
+  pendingCard = null;
+  cardUsesLeft = 1;
+  gameOver = false;
+  bits = {1:STARTING_BITS, 2:STARTING_BITS};
+  placementsLeft = 1;
+  handRevealed = {1:false, 2:false};
+  doubleTapCostCap = null;
+  freeDropActive = false;
+  lastMindRead = null;
+  passStreak = 0;
+  turnNumber = 1;
+  redrawUsedThisTurn = false;
+  redrawPending = false;
+  drawCard(1); drawCard(1); drawCard(1);
+  drawCard(2); drawCard(2); drawCard(2);
+  document.getElementById('overlay').classList.remove('show');
+  render();
+}
+
+function canAct(){
+  return !onlineMode || (myPlayerNumber === current && !onlineWaitingForOpponent);
+}
+
+function computeFlipsAt(r,c,player){
+  const opp = 3-player;
+  let flips = [];
+  for(const [dr,dc] of DIRS){
+    let rr=r+dr, cc=c+dc;
+    const line=[];
+    while(rr>=0&&rr<SIZE&&cc>=0&&cc<SIZE&&board[rr][cc]===opp){
+      line.push([rr,cc]); rr+=dr; cc+=dc;
+    }
+    if(line.length>0 && rr>=0&&rr<SIZE&&cc>=0&&cc<SIZE&&board[rr][cc]===player){
+      flips.push(...line);
+    }
+  }
+  return flips;
+}
+
+function computeValidMoves(player){
+  const opp = 3-player;
+  const moves = [];
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      if(board[r][c] !== 0) continue;
+      if(boundCells[cellKey(r,c)]) continue;
+      let flips = [];
+      for(const [dr,dc] of DIRS){
+        let rr=r+dr, cc=c+dc;
+        const line=[];
+        while(rr>=0&&rr<SIZE&&cc>=0&&cc<SIZE&&board[rr][cc]===opp){
+          line.push([rr,cc]); rr+=dr; cc+=dc;
+        }
+        if(line.length>0 && rr>=0&&rr<SIZE&&cc>=0&&cc<SIZE&&board[rr][cc]===player){
+          flips.push(...line);
+        }
+      }
+      if(flips.length>0) moves.push({r,c,flips});
+    }
+  }
+  return moves;
+}
+
+function placeStone(r,c,mv){
+  board[r][c] = current;
+  mv.flips.forEach(([fr,fc])=>{
+    if(!protectedCells[cellKey(fr,fc)]) board[fr][fc] = current;
+  });
+  passStreak = 0;
+  placementsLeft -= 1;
+  if(placementsLeft > 0 && getAvailableMoves().length > 0){
+    checkGameEnd();
+    render();
+    if(onlineMode) pushOnlineState();
+  } else {
+    endTurn();
+  }
+}
+
+function endTurn(){
+  drawCard(current);
+  current = 3-current;
+  turnNumber += 1;
+  Object.keys(protectedCells).forEach(k=>{
+    if(protectedCells[k].caster === current) delete protectedCells[k];
+  });
+  Object.keys(boundCells).forEach(k=>{
+    if(boundCells[k].caster === current) delete boundCells[k];
+  });
+  pendingCard = null;
+  cardUsesLeft = 1;
+  placementsLeft = 1;
+  handRevealed = {1:false, 2:false};
+  doubleTapCostCap = null;
+  freeDropActive = false;
+  lastMindRead = null;
+  redrawUsedThisTurn = false;
+  redrawPending = false;
+  checkGameEnd();
+  render();
+  if(onlineMode) pushOnlineState();
+}
+
+function checkGameEnd(){
+  const full = board.flat().every(v=>v!==0);
+  if(full){
+    gameOver = true;
+  }
+}
+
+function consumeCard(){
+  const type = pendingCard.card.type;
+  if(pendingCard.isRecycled){
+    const cost = pendingCard.dynamicCost;
+    bits[current] = Math.max(0, bits[current] - cost);
+    const hand = hands[current];
+    const idx = hand.findIndex(c=>c.id===pendingCard.recycleSourceCard.id);
+    if(idx>-1){
+      hand[idx].owner = current;
+      discard.push(hand[idx]);
+      hand.splice(idx,1);
+    }
+    cardUsesLeft -= 1;
+    if(type === 'twoDrop'){ placementsLeft = 2; }
+    if(type === 'doubleTap'){ cardUsesLeft += 2; doubleTapCostCap = 6; }
+    if(type === 'freeDrop'){ freeDropActive = true; }
+    pendingCard = null;
+    checkGameEnd();
+    render();
+    if(onlineMode) pushOnlineState();
+    return;
+  }
+  const hand = hands[current];
+  const idx = hand.findIndex(c=>c.id===pendingCard.card.id);
+  bits[current] = Math.max(0, bits[current] - CARD_TYPES[type].cost);
+  if(idx>-1){
+    hand[idx].owner = current;
+    discard.push(hand[idx]);
+    hand.splice(idx,1);
+  }
+  cardUsesLeft -= 1;
+  if(type === 'twoDrop'){ placementsLeft = 2; }
+  if(type === 'doubleTap'){ cardUsesLeft += 2; doubleTapCostCap = 6; }
+  if(type === 'freeDrop'){ freeDropActive = true; }
+  pendingCard = null;
+  checkGameEnd();
+  render();
+  if(onlineMode) pushOnlineState();
+}
+
+function recycleCost(targetType){
+  return CARD_TYPES[targetType].cost + 1;
+}
+
+function isRecycleEligible(targetCard){
+  if(!targetCard || targetCard.type === 'recycle') return false;
+  const cost = recycleCost(targetCard.type);
+  if(bits[current] < cost) return false;
+  if(doubleTapCostCap !== null && cost > doubleTapCostCap) return false;
+  return true;
+}
+
+function selectCard(cardId){
+  if(!canAct()) return;
+  if(redrawPending) return;
+  if(gameOver || cardUsesLeft<=0 || pendingCard) return;
+  if(turnNumber <= SKILL_LOCK_TURNS) return;
+  const card = hands[current].find(c=>c.id===cardId);
+  if(!card) return;
+  const t = CARD_TYPES[card.type];
+  if(bits[current] < t.cost) return;
+  if(doubleTapCostCap !== null && card.type !== 'doubleTap' && t.cost > doubleTapCostCap) return;
+  if(card.type === 'recycle'){
+    if(doubleTapCostCap !== null) return;
+    const eligible = discard.some(d=>isRecycleEligible(d));
+    if(!eligible) return;
+  }
+  pendingCard = {card, step:0, first:null};
+  if(LINE_DOMINATION_TYPES.includes(card.type)){
+    pendingCard.mode = 'row';
+    pendingCard.lines = [];
+    pendingCard.ready = false;
+  }
+  if(MULTI_CELL_PICK_TYPES[card.type]){
+    pendingCard.picks = [];
+    pendingCard.ready = false;
+  }
+  render();
+}
+
+function handleRecycleTarget(index){
+  if(!canAct()) return;
+  if(!pendingCard || pendingCard.card.type !== 'recycle' || pendingCard.isRecycled) return;
+  const target = discard[index];
+  if(!isRecycleEligible(target)) return;
+  const cost = recycleCost(target.type);
+  pendingCard = {
+    card: {id:'recycled-'+target.type+'-'+Date.now(), type: target.type},
+    step: 0,
+    first: null,
+    isRecycled: true,
+    dynamicCost: cost,
+    recycleSourceCard: pendingCard.card,
+    mode: LINE_DOMINATION_TYPES.includes(target.type) ? 'row' : undefined,
+    lines: LINE_DOMINATION_TYPES.includes(target.type) ? [] : undefined,
+    ready: (LINE_DOMINATION_TYPES.includes(target.type) || MULTI_CELL_PICK_TYPES[target.type]) ? false : undefined,
+    picks: MULTI_CELL_PICK_TYPES[target.type] ? [] : undefined
+  };
+  render();
+}
+
+function applyLineDomination(){
+  if(!pendingCard || !pendingCard.ready) return;
+  const cells = pendingCard.lines.flat();
+  cells.forEach(({r,c})=>{
+    const k = cellKey(r,c);
+    if(board[r][c]!==0 && !protectedCells[k]){
+      board[r][c] = current;
+    }
+  });
+  consumeCard();
+}
+
+function applyDoubleBind(){
+  if(!pendingCard || !pendingCard.ready) return;
+  pendingCard.picks.forEach(({r,c})=>{
+    boundCells[cellKey(r,c)] = {caster:current};
+  });
+  consumeCard();
+}
+
+function confirmPendingCard(){
+  if(!canAct()) return;
+  if(!pendingCard) return;
+  const type = pendingCard.card.type;
+  if(NO_TARGET_CARDS.includes(type)){ consumeCard(); return; }
+  if((type==='triReverse' || type==='triBlock') && pendingCard.step===2){
+    applyTrioEffect();
+    return;
+  }
+  if(LINE_DOMINATION_TYPES.includes(type) && pendingCard.ready){
+    applyLineDomination();
+    return;
+  }
+  if(MULTI_CELL_PICK_TYPES[type] && pendingCard.ready){
+    applyDoubleBind();
+  }
+}
+
+function handleMindReadTarget(opponentIndex){
+  if(!canAct()) return;
+  if(!pendingCard || pendingCard.card.type !== 'mindRead' || pendingCard.awaitingSwap) return;
+  const opp = 3-current;
+  const card = hands[opp][opponentIndex];
+  if(!card) return;
+  lastMindRead = {player:opp, index:opponentIndex, type:card.type};
+  // 開示は必ず発生するので、ここでコストと手札消費を確定させる（リサイクル経由にも対応）
+  const cost = pendingCard.isRecycled ? pendingCard.dynamicCost : CARD_TYPES.mindRead.cost;
+  bits[current] = Math.max(0, bits[current] - cost);
+  const sourceCard = pendingCard.isRecycled ? pendingCard.recycleSourceCard : pendingCard.card;
+  const hand = hands[current];
+  const idx = hand.findIndex(c=>c.id===sourceCard.id);
+  if(idx>-1){
+    hand[idx].owner = current;
+    discard.push(hand[idx]);
+    hand.splice(idx,1);
+  }
+  cardUsesLeft -= 1;
+  pendingCard.awaitingSwap = true;
+  pendingCard.revealedOpponentIndex = opponentIndex;
+  checkGameEnd();
+  render();
+  if(onlineMode) pushOnlineState();
+}
+
+function handleMindReadSwap(ownIndex){
+  if(!canAct()) return;
+  if(!pendingCard || pendingCard.card.type !== 'mindRead' || !pendingCard.awaitingSwap) return;
+  const opp = 3-current;
+  const ownCard = hands[current][ownIndex];
+  const oppCard = hands[opp][pendingCard.revealedOpponentIndex];
+  if(!ownCard || !oppCard) return;
+  hands[current][ownIndex] = oppCard;
+  hands[opp][pendingCard.revealedOpponentIndex] = ownCard;
+  finishMindRead(true);
+}
+
+function skipMindReadSwap(){
+  if(!canAct()) return;
+  if(!pendingCard || pendingCard.card.type !== 'mindRead' || !pendingCard.awaitingSwap) return;
+  finishMindRead(false);
+}
+
+function finishMindRead(swapped){
+  if(lastMindRead) lastMindRead.swapped = !!swapped;
+  pendingCard = null;
+  checkGameEnd();
+  render();
+  if(onlineMode) pushOnlineState();
+}
+
+function canRedraw(){
+  return canAct() && !pendingCard && !redrawPending && !gameOver
+    && turnNumber > SKILL_LOCK_TURNS && !redrawUsedThisTurn
+    && bits[current] >= REDRAW_COST && hands[current].length > 0
+    && !(onlineMode && onlineWaitingForOpponent);
+}
+
+function startRedraw(){
+  if(!canRedraw()) return;
+  redrawPending = true;
+  handRevealed[current] = true;
+  render();
+}
+
+function cancelRedraw(){
+  if(!canAct()) return;
+  redrawPending = false;
+  render();
+}
+
+function handleRedrawDiscard(idx){
+  if(!canAct() || !redrawPending) return;
+  const hand = hands[current];
+  const card = hand[idx];
+  if(!card) return;
+  bits[current] = Math.max(0, bits[current] - REDRAW_COST);
+  card.owner = current;
+  discard.push(card);
+  hand.splice(idx,1);
+  drawCard(current);
+  redrawUsedThisTurn = true;
+  redrawPending = false;
+  render();
+  if(onlineMode) pushOnlineState();
+}
+
+function cancelCard(){
+  if(!canAct()) return;
+  if(pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap) return;
+  pendingCard = null;
+  render();
+}
+
+function handleCardTarget(r,c){
+  const type = pendingCard.card.type;
+  const key = cellKey(r,c);
+  if(type==='reverse'){
+    if(board[r][c]===0 || protectedCells[key]) return;
+    board[r][c] = board[r][c]===1?2:1;
+    consumeCard();
+  } else if(type==='block'){
+    if(board[r][c]===0 || protectedCells[key]) return;
+    protectedCells[key] = {caster:current};
+    consumeCard();
+  } else if(type==='slide'){
+    if(pendingCard.step===0){
+      if(board[r][c]===0 || protectedCells[key]) return;
+      pendingCard.first = {r,c};
+      pendingCard.step = 1;
+      render();
+    } else {
+      const {r:fr,c:fc} = pendingCard.first;
+      const dr=Math.abs(r-fr), dc=Math.abs(c-fc);
+      const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
+      if(!adjacent || board[r][c]!==0 || boundCells[key]) return;
+      board[r][c] = board[fr][fc];
+      board[fr][fc] = 0;
+      const oldKey = cellKey(fr,fc);
+      if(protectedCells[oldKey]){ protectedCells[key]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
+      consumeCard();
+    }
+  } else if(type==='bind'){
+    if(board[r][c]!==0 || boundCells[key]) return;
+    boundCells[key] = {caster:current};
+    consumeCard();
+  } else if(type==='swap'){
+    if(pendingCard.step===0){
+      if(board[r][c]===0 || protectedCells[key]) return;
+      pendingCard.first = {r,c};
+      pendingCard.firstColor = board[r][c];
+      pendingCard.step = 1;
+      render();
+    } else {
+      const {r:fr,c:fc} = pendingCard.first;
+      const dr = Math.abs(r-fr), dc = Math.abs(c-fc);
+      const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
+      if(!adjacent) return;
+      if(board[r][c]===0 || protectedCells[key]) return;
+      if(board[r][c]===pendingCard.firstColor) return;
+      const tmp = board[fr][fc];
+      board[fr][fc] = board[r][c];
+      board[r][c] = tmp;
+      consumeCard();
+    }
+  } else if(type==='triReverse'){
+    if(pendingCard.step===2) return;
+    if(pendingCard.step===0){
+      pendingCard.first = {r,c};
+      pendingCard.step = 1;
+      render();
+    } else {
+      const {r:fr,c:fc} = pendingCard.first;
+      const dr = r-fr, dc = c-fc;
+      const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
+      if(!adjacent) return;
+      const tr = r+dr, tc = c+dc;
+      if(tr<0||tr>=SIZE||tc<0||tc>=SIZE) return;
+      pendingCard.second = {r,c};
+      pendingCard.third = {r:tr,c:tc};
+      pendingCard.step = 2;
+      render();
+    }
+  } else if(type==='triBlock'){
+    if(pendingCard.step===2) return;
+    if(pendingCard.step===0){
+      if(board[r][c]!==current) return;
+      pendingCard.first = {r,c};
+      pendingCard.step = 1;
+      render();
+    } else {
+      const {r:fr,c:fc} = pendingCard.first;
+      const dr = r-fr, dc = c-fc;
+      const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
+      if(!adjacent || board[r][c]!==current) return;
+      const tr = r+dr, tc = c+dc;
+      if(tr<0||tr>=SIZE||tc<0||tc>=SIZE || board[tr][tc]!==current) return;
+      pendingCard.second = {r,c};
+      pendingCard.third = {r:tr,c:tc};
+      pendingCard.step = 2;
+      render();
+    }
+  } else if(LINE_DOMINATION_TYPES.includes(type)){
+    if(pendingCard.ready) return;
+    const mode = pendingCard.mode || 'row';
+    const line = mode==='row'
+      ? Array.from({length:SIZE},(_,cc)=>({r, c:cc}))
+      : Array.from({length:SIZE},(_,rr)=>({r:rr, c}));
+    pendingCard.lines.push(line);
+    const needed = type==='dualLineDomination' ? 2 : 1;
+    if(pendingCard.lines.length >= needed){
+      pendingCard.ready = true;
+    }
+    pendingCard.mode = 'row';
+    render();
+  } else if(MULTI_CELL_PICK_TYPES[type]){
+    if(pendingCard.ready) return;
+    if(board[r][c]!==0 || boundCells[key]) return;
+    if(pendingCard.picks.some(p=>p.r===r && p.c===c)) return;
+    pendingCard.picks.push({r,c});
+    if(pendingCard.picks.length >= MULTI_CELL_PICK_TYPES[type]){
+      pendingCard.ready = true;
+    }
+    render();
+  }
+}
+
+function applyTrioEffect(){
+  if(!pendingCard || !pendingCard.third) return;
+  const type = pendingCard.card.type;
+  const cells = [pendingCard.first, pendingCard.second, pendingCard.third];
+  if(type==='triReverse'){
+    cells.forEach(({r,c})=>{
+      const k = cellKey(r,c);
+      if(board[r][c]!==0 && !protectedCells[k]){
+        board[r][c] = board[r][c]===1?2:1;
+      }
+    });
+  } else if(type==='triBlock'){
+    cells.forEach(({r,c})=>{
+      protectedCells[cellKey(r,c)] = {caster:current};
+    });
+  }
+  consumeCard();
+}
+
+function onCellClick(r,c){
+  if(!canAct()) return;
+  if(redrawPending) return;
+  if(gameOver) return;
+  if(pendingCard){ handleCardTarget(r,c); return; }
+  if(freeDropActive){
+    const key = cellKey(r,c);
+    if(board[r][c]!==0 || boundCells[key]) return;
+    const flips = computeFlipsAt(r,c,current);
+    placeStone(r,c,{r,c,flips});
+    return;
+  }
+  const moves = computeValidMoves(current);
+  const mv = moves.find(m=>m.r===r && m.c===c);
+  if(mv) placeStone(r,c,mv);
+}
+
+function doPass(){
+  if(!canAct()) return;
+  if(redrawPending) return;
+  if(gameOver || pendingCard) return;
+  if(getAvailableMoves().length>0) return;
+  passStreak += 1;
+  if(passStreak >= 2){
+    gameOver = true;
+    render();
+    if(onlineMode) pushOnlineState();
+    return;
+  }
+  endTurn();
+}
+
+function getCardTargets(){
+  const set = new Set();
+  if(!pendingCard) return set;
+  const type = pendingCard.card.type;
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const key = cellKey(r,c);
+      if(type==='reverse' || type==='block'){
+        if(board[r][c]!==0 && !protectedCells[key]) set.add(key);
+      } else if(type==='slide'){
+        if(pendingCard.step===0){
+          if(board[r][c]!==0 && !protectedCells[key]) set.add(key);
+        } else {
+          const {r:fr,c:fc} = pendingCard.first;
+          const dr=Math.abs(r-fr), dc=Math.abs(c-fc);
+          if(dr<=1 && dc<=1 && !(dr===0&&dc===0) && board[r][c]===0 && !boundCells[key]) set.add(key);
+        }
+      } else if(type==='bind'){
+        if(board[r][c]===0 && !boundCells[key]) set.add(key);
+      } else if(type==='swap'){
+        if(pendingCard.step===0){
+          if(board[r][c]!==0 && !protectedCells[key]) set.add(key);
+        } else {
+          const {r:fr,c:fc} = pendingCard.first;
+          const dr = Math.abs(r-fr), dc = Math.abs(c-fc);
+          const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
+          if(adjacent && board[r][c]!==0 && board[r][c]!==pendingCard.firstColor && !protectedCells[key]) set.add(key);
+        }
+      } else if(type==='triReverse'){
+        if(pendingCard.step===0){
+          set.add(key);
+        } else if(pendingCard.step===1){
+          const {r:fr,c:fc} = pendingCard.first;
+          const dr = r-fr, dc = c-fc;
+          const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
+          if(adjacent){
+            const tr = r+dr, tc = c+dc;
+            if(tr>=0&&tr<SIZE&&tc>=0&&tc<SIZE) set.add(key);
+          }
+        }
+      } else if(type==='triBlock'){
+        if(pendingCard.step===0){
+          if(board[r][c]===current) set.add(key);
+        } else if(pendingCard.step===1){
+          const {r:fr,c:fc} = pendingCard.first;
+          const dr = r-fr, dc = c-fc;
+          const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
+          if(adjacent && board[r][c]===current){
+            const tr = r+dr, tc = c+dc;
+            if(tr>=0&&tr<SIZE&&tc>=0&&tc<SIZE&&board[tr][tc]===current) set.add(key);
+          }
+        }
+      } else if(LINE_DOMINATION_TYPES.includes(type)){
+        if(!pendingCard.ready) set.add(key);
+      } else if(MULTI_CELL_PICK_TYPES[type]){
+        if(!pendingCard.ready && board[r][c]===0 && !boundCells[key] && !pendingCard.picks.some(p=>p.r===r && p.c===c)) set.add(key);
+      }
+    }
+  }
+  return set;
+}
+
+function getAvailableMoves(){
+  if(freeDropActive){
+    const arr = [];
+    for(let r=0;r<SIZE;r++){
+      for(let c=0;c<SIZE;c++){
+        if(board[r][c]===0 && !boundCells[cellKey(r,c)]) arr.push({r,c});
+      }
+    }
+    return arr;
+  }
+  return computeValidMoves(current);
+}
+
+function render(){
+  const moves = pendingCard ? [] : getAvailableMoves();
+  const moveSet = new Set(moves.map(m=>cellKey(m.r,m.c)));
+  const cardTargets = getCardTargets();
+
+  const boardEl = document.getElementById('board');
+  boardEl.innerHTML = '';
+  for(let r=0;r<SIZE;r++){
+    for(let c=0;c<SIZE;c++){
+      const key = cellKey(r,c);
+      const div = document.createElement('div');
+      div.className = 'cell';
+      if(boundCells[key]) div.classList.add('bound');
+      if(protectedCells[key]) div.classList.add('protected');
+      if(cardTargets.has(key)) div.classList.add('card-target','clickable');
+      if(pendingCard && (pendingCard.step===1 || (pendingCard.step===2 && (pendingCard.card.type==='triReverse'||pendingCard.card.type==='triBlock'))) && pendingCard.first && pendingCard.first.r===r && pendingCard.first.c===c) div.classList.add('selected-source');
+      if(pendingCard && pendingCard.step===2 && (pendingCard.card.type==='triReverse'||pendingCard.card.type==='triBlock')){
+        const trio = [pendingCard.first, pendingCard.second, pendingCard.third];
+        if(trio.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
+      }
+      if(pendingCard && LINE_DOMINATION_TYPES.includes(pendingCard.card.type) && pendingCard.lines && pendingCard.lines.length>0){
+        const picked = pendingCard.lines.flat();
+        if(picked.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
+      }
+      if(pendingCard && MULTI_CELL_PICK_TYPES[pendingCard.card.type] && pendingCard.picks && pendingCard.picks.length>0){
+        if(pendingCard.picks.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
+      }
+      if(!pendingCard && moveSet.has(key) && !gameOver && canAct()) div.classList.add('clickable');
+
+      if(board[r][c]!==0){
+        const stone = document.createElement('div');
+        stone.className = 'stone ' + (board[r][c]===1?'b':'w');
+        div.appendChild(stone);
+        if(protectedCells[key]){
+          const b = document.createElement('div');
+          b.className='badge'; b.textContent='🛡️';
+          div.appendChild(b);
+        }
+      } else if(boundCells[key]){
+        const b = document.createElement('div');
+        b.className='badge'; b.textContent='🔒';
+        div.appendChild(b);
+      } else if(!pendingCard && moveSet.has(key) && !gameOver){
+        const dot = document.createElement('div');
+        dot.className='dot';
+        div.appendChild(dot);
+      }
+      div.addEventListener('click', ()=>onCellClick(r,c));
+      boardEl.appendChild(div);
+    }
+  }
+
+  // hands
+  const mindReadTargeting = pendingCard && pendingCard.card.type==='mindRead' && !pendingCard.awaitingSwap;
+  const mindReadSwapChoosing = pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap;
+  [1,2].forEach(p=>{
+    const handEl = document.getElementById('hand'+p);
+    handEl.innerHTML = '';
+    const isMindReadTarget = mindReadTargeting && p === (3-current);
+    const isSwapChoiceOwner = mindReadSwapChoosing && p === current;
+    const isRedrawChoiceOwner = redrawPending && p === current;
+    const revealed = (handRevealed[p] && !isMindReadTarget) || isSwapChoiceOwner || isRedrawChoiceOwner;
+    if(revealed){
+      hands[p].forEach((card,idx)=>{
+        const t = CARD_TYPES[card.type];
+        const el = document.createElement('div');
+        if(isSwapChoiceOwner){
+          el.className = 'card type-'+card.type+' swap-target';
+          el.innerHTML = '<div class="icon">'+t.icon+'</div><div class="name">'+t.name[LANG]+'</div>';
+          el.title = t.name[LANG];
+          if(canAct()) el.addEventListener('click', ()=>handleMindReadSwap(idx));
+          handEl.appendChild(el);
+          return;
+        }
+        if(isRedrawChoiceOwner){
+          el.className = 'card type-'+card.type+' swap-target';
+          el.innerHTML = '<div class="icon">'+t.icon+'</div><div class="name">'+t.name[LANG]+'</div>';
+          el.title = t.name[LANG];
+          if(canAct()) el.addEventListener('click', ()=>handleRedrawDiscard(idx));
+          handEl.appendChild(el);
+          return;
+        }
+        const turnOk = canAct() && p===current && !gameOver && cardUsesLeft>0 && !pendingCard && !redrawPending && turnNumber>SKILL_LOCK_TURNS;
+        const overCap = doubleTapCostCap !== null && card.type !== 'doubleTap' && t.cost > doubleTapCostCap;
+        let disabled = !turnOk || bits[p] < t.cost || overCap;
+        let costLabel = '⚡'+t.cost;
+        if(card.type === 'recycle'){
+          costLabel = '⚡+1';
+          if(doubleTapCostCap !== null){
+            disabled = true;
+          } else if(p===current && turnOk && !overCap){
+            const eligible = discard.some(d=>isRecycleEligible(d));
+            if(!eligible) disabled = true;
+          }
+        }
+        el.className = 'card type-'+card.type + (disabled?' disabled':'') + (pendingCard && pendingCard.card.id===card.id ? ' selected':'');
+        el.innerHTML = '<div class="cost">'+costLabel+'</div><div class="icon">'+t.icon+'</div><div class="name">'+t.name[LANG]+'</div>';
+        el.title = t.desc[LANG] + (card.type==='recycle' ? (LANG==='ja' ? '（コスト：対象カードのコスト+1／ダブルタップの追加使用枠では選べません）' : ' (Cost = target card\u2019s cost + 1. Cannot be used via Double Tap\u2019s bonus slots.)') : ' ('+(LANG==='ja'?'コスト':'Cost')+t.cost+')');
+        if(!disabled) el.addEventListener('click', ()=>selectCard(card.id));
+        handEl.appendChild(el);
+      });
+      for(let i=hands[p].length;i<5;i++){
+        const slot = document.createElement('div');
+        slot.className='card-empty-slot';
+        handEl.appendChild(slot);
+      }
+    } else {
+      if(hands[p].length===0){
+        const note = document.createElement('div');
+        note.className='hand-hidden-note';
+        note.textContent = tr('handHiddenNote');
+        handEl.appendChild(note);
+      } else {
+        hands[p].forEach((card,idx)=>{
+          const back = document.createElement('div');
+          back.className = 'card-back';
+          back.textContent = '?';
+          if(isMindReadTarget && canAct()){
+            back.classList.add('mindread-target');
+            back.addEventListener('click', ()=>handleMindReadTarget(idx));
+          }
+          handEl.appendChild(back);
+        });
+      }
+    }
+    const btn = document.getElementById('revealBtn'+p);
+    btn.disabled = isMindReadTarget;
+    document.getElementById('revealBtn'+p+'Label').textContent = revealed ? tr('revealHide') : tr('revealShow');
+    btn.classList.toggle('revealed', revealed);
+    document.getElementById('handPanel'+p).classList.toggle('active-turn', p===current && !gameOver);
+  });
+
+  document.getElementById('deckCount').textContent = deck.length;
+  document.getElementById('score1').textContent = board.flat().filter(v=>v===1).length;
+  document.getElementById('score2').textContent = board.flat().filter(v=>v===2).length;
+  document.getElementById('bits1').textContent = bits[1];
+  document.getElementById('bits2').textContent = bits[2];
+
+  const discardEl = document.getElementById('discardCards');
+  discardEl.innerHTML = '';
+  document.getElementById('discardCount').textContent = discard.length;
+  const recycleTargeting = pendingCard && pendingCard.card.type==='recycle' && !pendingCard.isRecycled;
+  if(discard.length === 0){
+    const note = document.createElement('div');
+    note.className = 'discard-empty-note';
+    note.textContent = tr('discardEmptyNote');
+    discardEl.appendChild(note);
+  } else {
+    discard.forEach((card,idx)=>{
+      const t = CARD_TYPES[card.type];
+      const chip = document.createElement('div');
+      chip.className = 'discard-chip type-'+card.type+' owner-'+card.owner;
+      chip.innerHTML = '<div class="icon">'+t.icon+'</div><div class="name">'+t.name[LANG]+'</div>';
+      const ownerLabel = card.owner===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+      const eligible = recycleTargeting && canAct() && isRecycleEligible(card);
+      if(eligible){
+        chip.classList.add('recycle-target');
+        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／リサイクルコスト'+recycleCost(card.type)+'）' : ' (used by '+ownerLabel+' / recycle cost '+recycleCost(card.type)+')');
+        chip.addEventListener('click', ()=>handleRecycleTarget(idx));
+      } else {
+        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／コスト'+t.cost+'）' : ' (used by '+ownerLabel+' / cost '+t.cost+')');
+        if(recycleTargeting) chip.style.opacity = '.35';
+      }
+      discardEl.appendChild(chip);
+    });
+  }
+
+  // mind read banner
+  const mrBanner = document.getElementById('mindReadBanner');
+  if(lastMindRead){
+    const t = CARD_TYPES[lastMindRead.type];
+    const targetLabel = lastMindRead.player===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+    mrBanner.style.display = 'flex';
+    const swapNote = lastMindRead.swapped===true
+      ? (LANG==='ja' ? '（自分の手札1枚と交換しました）' : ' (Swapped with one of your hand cards.)')
+      : lastMindRead.swapped===false
+        ? (LANG==='ja' ? '（交換はしませんでした）' : ' (No swap was made.)')
+        : '';
+    document.getElementById('mindReadBannerText').innerHTML = LANG==='ja'
+      ? '🔮 マインドリード結果： '+targetLabel+'の手札'+(lastMindRead.index+1)+'枚目は「'+t.icon+' '+t.name[LANG]+'」でした'+swapNote
+      : '🔮 Mind Read result: '+targetLabel+'\u2019s hand card #'+(lastMindRead.index+1)+' is "'+t.icon+' '+t.name[LANG]+'."'+swapNote;
+  } else {
+    mrBanner.style.display = 'none';
+  }
+
+  // status
+  const statusEl = document.getElementById('statusMsg');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const confirmBtn = document.getElementById('confirmBtn');
+  const passBtn = document.getElementById('passBtn');
+  const modeRowBtn = document.getElementById('modeRowBtn');
+  const modeColBtn = document.getElementById('modeColBtn');
+  const redrawBtn = document.getElementById('redrawBtn');
+  const redrawCancelBtn = document.getElementById('redrawCancelBtn');
+  const mindReadSkipBtn = document.getElementById('mindReadSkipBtn');
+  cancelBtn.style.display = 'none';
+  confirmBtn.style.display = 'none';
+  passBtn.style.display = 'none';
+  modeRowBtn.style.display = 'none';
+  modeColBtn.style.display = 'none';
+  redrawBtn.style.display = 'none';
+  redrawCancelBtn.style.display = 'none';
+  mindReadSkipBtn.style.display = 'none';
+
+  if(onlineMode && onlineWaitingForOpponent && !gameOver){
+    statusEl.innerHTML = '⏳ '+tr('onlineWaitingOpponent');
+  } else if(!gameOver && redrawPending){
+    statusEl.innerHTML = LANG==='ja'
+      ? '🔁 <b>リドロー</b>使用中 — 捨てる手札を1枚選んでください。捨てた分は使用済みスキルカード置き場に置かれ、新しく1枚ドローします。'
+      : '🔁 <b>Redraw</b> in progress \u2014 choose one hand card to discard. It goes to the used pile and you immediately draw a new card.';
+    if(canAct()) redrawCancelBtn.style.display = 'inline-block';
+  } else if(!gameOver){
+    const turnLabel = current===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+    if(pendingCard && pendingCard.card.type==='recycle' && !pendingCard.isRecycled){
+      let msg = LANG==='ja'
+        ? '<b>♻️ リサイクル</b>使用中 — 使用済みスキルカード置き場から発動したいカードを1枚選んでください（同じく♻️リサイクルは選べません。手持ちビットで払えないカードも選べません）。'
+        : '<b>♻️ Recycle</b> in progress \u2014 pick a card from the discard pile to trigger again (Recycle itself, and cards you can\u2019t afford, are not selectable).';
+      statusEl.innerHTML = msg;
+      if(canAct()) cancelBtn.style.display = 'inline-block';
+    } else if(pendingCard){
+      const t = CARD_TYPES[pendingCard.card.type];
+      let msg = pendingCard.isRecycled
+        ? '<b>♻️ '+(LANG==='ja'?'リサイクル発動：':'Recycled: ')+t.icon+' '+t.name[LANG]+'</b>'+(LANG==='ja' ? '使用中（コスト'+pendingCard.dynamicCost+'） — ' : ' in progress (cost '+pendingCard.dynamicCost+') \u2014 ')
+        : '<b>'+t.icon+' '+t.name[LANG]+'</b>'+(LANG==='ja' ? '使用中 — ' : ' in progress \u2014 ');
+      if(pendingCard.card.type==='slide' && pendingCard.step===1){
+        msg += LANG==='ja' ? '移動先の空マスを選んでください。' : 'Choose an empty destination cell.';
+      } else if(pendingCard.card.type==='swap' && pendingCard.step===0){
+        msg += LANG==='ja' ? '起点となる石を1つ選んでください（自分・相手どちらの色でも構いません）。' : 'Choose a starting stone (either color is fine).';
+      } else if(pendingCard.card.type==='swap' && pendingCard.step===1){
+        msg += LANG==='ja' ? '起点に隣接する、色が異なる石を1つ選んでください。' : 'Choose an adjacent stone of the opposite color to swap with.';
+      } else if(pendingCard.card.type==='triReverse' && pendingCard.step===0){
+        msg += LANG==='ja' ? '起点となるマスを1つ選んでください。' : 'Choose a starting cell.';
+      } else if(pendingCard.card.type==='triReverse' && pendingCard.step===1){
+        msg += LANG==='ja' ? '起点から隣接するマス（縦横斜め）を選んで方向を決めてください。延長線上の3マス目まで自動で選ばれます。' : 'Choose an adjacent cell to set the direction; the 3rd cell is chosen automatically along that line.';
+      } else if(pendingCard.card.type==='triReverse' && pendingCard.step===2){
+        msg += LANG==='ja' ? '金色の枠で囲まれた3マスでよろしければ「この3マスで確定」を押してください。' : 'If the 3 highlighted cells look right, press "Confirm these 3 cells".';
+        confirmBtn.textContent = LANG==='ja' ? 'この3マスで確定' : 'Confirm these 3 cells';
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(pendingCard.card.type==='triBlock' && pendingCard.step===0){
+        msg += LANG==='ja' ? '起点となる自分の石を1つ選んでください。' : 'Choose one of your stones as the starting point.';
+      } else if(pendingCard.card.type==='triBlock' && pendingCard.step===1){
+        msg += LANG==='ja' ? '起点から隣接する自分の石（縦横斜め）を選んで方向を決めてください。延長線上の3マス目まで自動で選ばれます。' : 'Choose an adjacent stone of yours to set the direction; the 3rd cell is chosen automatically.';
+      } else if(pendingCard.card.type==='triBlock' && pendingCard.step===2){
+        msg += LANG==='ja' ? '金色の枠で囲まれた3マスでよろしければ「この3マスで確定」を押してください。' : 'If the 3 highlighted cells look right, press "Confirm these 3 cells".';
+        confirmBtn.textContent = LANG==='ja' ? 'この3マスで確定' : 'Confirm these 3 cells';
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(LINE_DOMINATION_TYPES.includes(pendingCard.card.type) && !pendingCard.ready){
+        const needed = pendingCard.card.type==='dualLineDomination' ? 2 : 1;
+        const gotten = pendingCard.lines.length;
+        msg += LANG==='ja'
+          ? '残り'+(needed-gotten)+'列を選んでください。下のボタンで「行（横）」「列（縦）」を切り替えてから、盤面のマスをクリックするとそのマスを含む列がまるごと選ばれます。'
+          : (needed-gotten)+' more line(s) to pick. Use the buttons below to choose Row/Column mode, then click any cell to select that whole line.';
+        modeRowBtn.style.display = 'inline-block';
+        modeColBtn.style.display = 'inline-block';
+        modeRowBtn.classList.toggle('mode-active', (pendingCard.mode||'row')==='row');
+        modeColBtn.classList.toggle('mode-active', pendingCard.mode==='col');
+      } else if(LINE_DOMINATION_TYPES.includes(pendingCard.card.type) && pendingCard.ready){
+        msg += LANG==='ja' ? '金色の枠で囲まれた列でよろしければ「この列で確定」を押してください。' : 'If the highlighted line(s) look right, press "Confirm this line".';
+        confirmBtn.textContent = LANG==='ja' ? 'この列で確定' : 'Confirm this line';
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(MULTI_CELL_PICK_TYPES[pendingCard.card.type] && !pendingCard.ready){
+        const needed = MULTI_CELL_PICK_TYPES[pendingCard.card.type];
+        const gotten = pendingCard.picks.length;
+        msg += LANG==='ja' ? '空いているマスを残り'+(needed-gotten)+'つ選んでください。' : (needed-gotten)+' more empty cell(s) to pick.';
+      } else if(MULTI_CELL_PICK_TYPES[pendingCard.card.type] && pendingCard.ready){
+        msg += LANG==='ja' ? '金色の枠で囲まれたマスでよろしければ「このマスで確定」を押してください。' : 'If the highlighted cells look right, press "Confirm these cells".';
+        confirmBtn.textContent = LANG==='ja' ? 'このマスで確定' : 'Confirm these cells';
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap){
+        const revealedType = lastMindRead ? CARD_TYPES[lastMindRead.type] : null;
+        msg += LANG==='ja'
+          ? (revealedType ? '相手の手札は「'+revealedType.icon+' '+revealedType.name[LANG]+'」でした。自分の手札と交換する場合はカードを選んでください。交換しない場合は「スキップ」を押してください。' : '交換する場合は自分の手札を選んでください。')
+          : (revealedType ? 'The opponent\u2019s card is "'+revealedType.icon+' '+revealedType.name[LANG]+'." Choose one of your own cards to swap with it, or press "Skip" to decline.' : 'Choose one of your own cards to swap, or skip.');
+      } else if(pendingCard.card.type==='mindRead'){
+        msg += LANG==='ja' ? '相手の手札を1枚（裏向きのまま）選んでください。開示後、自分の手札と交換するか選べます。' : 'Choose one of the opponent\u2019s (face-down) cards to reveal. Afterwards you may choose to swap it with one of your own.';
+      } else if(NO_TARGET_CARDS.includes(pendingCard.card.type)){
+        msg += LANG==='ja' ? '対象マスの指定は不要です。よろしければ「発動する」を押してください。' : 'No target needed \u2014 press "Activate" when ready.';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else {
+        msg += t.desc[LANG] + (LANG==='ja' ? '　対象マスを選んでください。' : ' Choose a target cell.');
+      }
+      statusEl.innerHTML = msg;
+      if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap){
+        if(canAct()) mindReadSkipBtn.style.display = 'inline-block';
+      } else if(canAct()) cancelBtn.style.display = 'inline-block';
+    } else if(moves.length===0){
+      statusEl.innerHTML = LANG==='ja'
+        ? '<b>'+turnLabel+'</b>のターン — 配置できるマスがありません。カードを使うか、パスしてください。'
+        : '<b>'+turnLabel+'</b>\u2019s turn \u2014 no legal moves. Use a skill or pass.';
+      if(canAct()) passBtn.style.display = 'inline-block';
+      if(canRedraw()) redrawBtn.style.display = 'inline-block';
+    } else {
+      let msg = LANG==='ja'
+        ? '<b>'+turnLabel+'</b>のターン — 石を置くマス、またはカードを選んでください。'
+        : '<b>'+turnLabel+'</b>\u2019s turn \u2014 place a stone or choose a card.';
+      const extras = [];
+      if(turnNumber<=SKILL_LOCK_TURNS) extras.push(LANG==='ja' ? '🔒開幕'+SKILL_LOCK_TURNS+'ターンはスキル使用不可（'+(SKILL_LOCK_TURNS+1)+'ターン目から解禁）' : '🔒 Skills locked for the first '+SKILL_LOCK_TURNS+' turns (unlocks on turn '+(SKILL_LOCK_TURNS+1)+')');
+      if(placementsLeft>1) extras.push(LANG==='ja' ? '⏫ツードロップ発動中：あと'+placementsLeft+'回配置できます' : '⏫ Two Drop active: '+placementsLeft+' more placement(s) this turn');
+      if(freeDropActive) extras.push(LANG==='ja' ? '🌀フリードロップ発動中：好きな空マスに置けます' : '🌀 Free Drop active: place anywhere empty');
+      if(cardUsesLeft>1) extras.push(LANG==='ja' ? '✌️このターンあと'+cardUsesLeft+'回スキルを使用できます（コスト'+(doubleTapCostCap??'制限なし')+'以下）' : '✌️ '+cardUsesLeft+' more skill use(s) this turn (cost '+(doubleTapCostCap??'unlimited')+' or less)');
+      if(extras.length>0) msg = '<b>'+turnLabel+'</b>'+(LANG==='ja'?'のターン — ':'\u2019s turn \u2014 ')+extras.join(LANG==='ja'?'／':' / ');
+      statusEl.innerHTML = msg;
+      if(canRedraw()) redrawBtn.style.display = 'inline-block';
+    }
+  } else {
+    const b = board.flat().filter(v=>v===1).length;
+    const w = board.flat().filter(v=>v===2).length;
+    let result;
+    if(LANG==='ja'){
+      result = b===w ? '引き分け' : (b>w ? '黒の勝ち' : '白の勝ち');
+      statusEl.innerHTML = '対局終了 — <b>'+result+'</b>（黒 '+b+' - '+w+' 白）';
+    } else {
+      result = b===w ? 'Draw' : (b>w ? 'Black wins' : 'White wins');
+      statusEl.innerHTML = 'Game over \u2014 <b>'+result+'</b> (Black '+b+' - '+w+' White)';
+    }
+    document.getElementById('resultTitle').textContent = result;
+    document.getElementById('resultScore').innerHTML = LANG==='ja'
+      ? '黒 <b>'+b+'</b> — <b>'+w+'</b> 白'
+      : 'Black <b>'+b+'</b> \u2014 <b>'+w+'</b> White';
+    document.getElementById('overlay').classList.add('show');
+    document.getElementById('playAgainBtn').style.display = onlineMode ? 'none' : 'inline-block';
+    document.getElementById('leaveRoomAfterGameBtn').style.display = onlineMode ? 'inline-block' : 'none';
+  }
+
+  document.getElementById('restartBtn').style.display = onlineMode ? 'none' : 'inline-block';
+  document.getElementById('leaveRoomInGameBtn').style.display = onlineMode ? 'inline-block' : 'none';
+}
+
+function renderRules(){
+  const container = document.getElementById('rulesContent');
+  const basicRules = LANG==='ja' ? [
+    '8×8盤面の通常オセロ。黒が先手で交互に石を置きます。',
+    '相手の石を挟むと裏返る、通常のオセロのルールがそのまま適用されます。',
+    '置ける場所が無い場合は「パス」できます。両者とも置けなくなるか盤面が埋まったら終了、石数が多い方の勝ちです。'
+  ] : [
+    'Standard Othello on an 8×8 board. Black moves first, players alternate.',
+    'Standard Othello flanking rules apply \u2014 sandwich the opponent\u2019s stones to flip them.',
+    'If you have no legal move you may Pass. The game ends when neither player can move, or the board is full; most stones wins.'
+  ];
+  const bitRules = LANG==='ja' ? [
+    '各プレイヤーはゲーム開始時に「ビット」を'+STARTING_BITS+'持ちます（使い切りで回復・増加はしません）。',
+    '初期配置が崩れる前の事故を防ぐため、対局開始から'+SKILL_LOCK_TURNS+'ターン（黒・白それぞれの初手）はスキルカードを使用できません。'+(SKILL_LOCK_TURNS+1)+'ターン目から解禁されます。',
+    '各ターンの終わりに、自分の手札（最大5枚）へ共用デッキから自動で1枚ドローします。',
+    '石を置く前に、手札から1枚だけ選んで使用できます（使わなくてもOK）。カードにはそれぞれ消費ビットがあり、所持ビットが足りないカードは使用できません。使用後、通常通り石を置きます。',
+    'スキルを使う前（スキルフェーズの前）に、1ターン1回まで「🔁 リドロー」を使えます。ビットを'+REDRAW_COST+'消費して手札を1枚選んで使用済みスキルカード置き場に捨て、その場で新しく1枚ドローします。',
+    '使用したスキルカードは画面上部の「使用済みスキルカード置き場」に公開の状態で積まれていきます。共用デッキが尽きるとこの置き場がシャッフルされ、新しい山札として再利用されます。'
+  ] : [
+    'Each player starts with '+STARTING_BITS+' Bits (a one-time resource that never regenerates).',
+    'To prevent early-game accidents, skill cards are locked for the first '+SKILL_LOCK_TURNS+' turns (Black\u2019s and White\u2019s opening moves). They unlock from turn '+(SKILL_LOCK_TURNS+1)+'.',
+    'At the end of each turn you automatically draw 1 card from the shared deck into your hand (max 5).',
+    'Before placing a stone you may use one card from your hand (optional). Each card costs Bits; you can\u2019t use a card you can\u2019t afford. After using it, place a stone as usual.',
+    'Before using a skill (once per turn), you may "🔁 Redraw": spend '+REDRAW_COST+' Bit to discard one hand card to the used pile and immediately draw a new one.',
+    'Used skill cards are shown face-up in the "Used Skill Cards" area above. When the shared deck runs out, this pile is reshuffled into a new deck.'
+  ];
+  const categories = LANG==='ja' ? [
+    {icon:'🔎', label:'情報系', types:['mindRead']},
+    {icon:'🧩', label:'補助系', types:['doubleTap','recycle']},
+    {icon:'🛡️', label:'妨害・防御系', types:['bind','doubleBind','block','triBlock']},
+    {icon:'🔄', label:'盤面操作系', types:['slide','reverse','swap','triReverse']},
+    {icon:'📍', label:'配置系', types:['twoDrop','freeDrop']},
+    {icon:'👑', label:'制圧系', types:['lineDomination','dualLineDomination']}
+  ] : [
+    {icon:'🔎', label:'Information', types:['mindRead']},
+    {icon:'🧩', label:'Support', types:['doubleTap','recycle']},
+    {icon:'🛡️', label:'Disruption & Defense', types:['bind','doubleBind','block','triBlock']},
+    {icon:'🔄', label:'Board Manipulation', types:['slide','reverse','swap','triReverse']},
+    {icon:'📍', label:'Placement', types:['twoDrop','freeDrop']},
+    {icon:'👑', label:'Domination', types:['lineDomination','dualLineDomination']}
+  ];
+  const catClass = {mindRead:'cat-info', doubleTap:'cat-support', recycle:'cat-support', bind:'cat-defense', doubleBind:'cat-defense', block:'cat-defense', triBlock:'cat-defense', slide:'cat-board', reverse:'cat-board', swap:'cat-board', triReverse:'cat-board', twoDrop:'cat-placement', freeDrop:'cat-placement', lineDomination:'cat-domination', dualLineDomination:'cat-domination'};
+
+  let html = '<b style="color:var(--gold-soft)">'+(LANG==='ja'?'基本ルール':'Basic Rules')+'</b><ul>';
+  basicRules.forEach(t=>{ html += '<li>'+t+'</li>'; });
+  html += '</ul><b style="color:var(--gold-soft)">'+(LANG==='ja'?'スキルカードとビット':'Skill Cards & Bits')+'</b><ul>';
+  bitRules.forEach(t=>{ html += '<li>'+t+'</li>'; });
+  html += '</ul>';
+
+  categories.forEach(cat=>{
+    html += '<b style="color:var(--gold-soft)">'+cat.icon+' '+cat.label+'</b><ul>';
+    cat.types.forEach(type=>{
+      const t = CARD_TYPES[type];
+      const unit = LANG==='ja' ? '・'+t.count+'枚' : ', x'+t.count;
+      const costLabel = type==='recycle'
+        ? (LANG==='ja' ? 'コスト：対象カードのコスト+1' : 'Cost: target card\u2019s cost + 1')
+        : (LANG==='ja' ? 'コスト'+t.cost : 'Cost '+t.cost);
+      html += '<li><span class="tag '+catClass[type]+'">'+t.icon+' '+t.name[LANG]+'</span>（'+costLabel+unit+'）'+t.desc[LANG];
+      if(type==='recycle'){
+        html += LANG==='ja'
+          ? '捨て札のダブルタップをリサイクル対象に選ぶことはできますが、逆にダブルタップの追加使用枠でリサイクルを使うことはできません（無限連鎖の防止のため）。'
+          : ' You may Recycle a discarded Double Tap, but you cannot use Recycle itself via Double Tap\u2019s bonus slots (to prevent infinite chains).';
+      }
+      html += '</li>';
+    });
+    html += '</ul>';
+  });
+
+  container.innerHTML = html;
+}
+
+// ---------- Screen management ----------
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(el=>el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showTitleScreen(){ stopPolling(); showScreen('screen-title'); }
+function showLobbyScreen(){
+  showScreen('screen-lobby');
+  const msgEl = document.getElementById('lobbyMsg');
+  msgEl.textContent=''; msgEl.className='lobby-msg';
+}
+function showGameScreen(){ showScreen('screen-game'); }
+
+function showWaitingOverlay(code){
+  document.getElementById('waitingRoomCode').textContent = code;
+  document.getElementById('waitingOverlay').classList.add('show');
+}
+function hideWaitingOverlay(){
+  document.getElementById('waitingOverlay').classList.remove('show');
+}
+
+function updateOnlineInfoBar(){
+  const bar = document.getElementById('onlineInfoBar');
+  if(!onlineMode){ bar.style.display='none'; return; }
+  bar.style.display='flex';
+  const role = myPlayerNumber===1 ? tr('roleBlack') : tr('roleWhite');
+  document.getElementById('onlineInfoText').textContent =
+    tr('onlineInfoConnected').replace('{code}', onlineRoomCode).replace('{role}', role);
+}
+
+// ---------- Online sync (shared storage) ----------
+function storageAvailable(){
+  return typeof window !== 'undefined' && typeof window.storage !== 'undefined';
+}
+
+function generateRoomCode(){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for(let i=0;i<5;i++) s += chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+
+function serializeState(seq){
+  return {
+    seq, board, current, hands, deck, discard, protectedCells, boundCells,
+    bits, placementsLeft, cardUsesLeft, doubleTapCostCap, freeDropActive,
+    lastMindRead, passStreak, turnNumber, gameOver, idSeed, redrawUsedThisTurn,
+    joined: onlineJoined
+  };
+}
+
+function applyRemoteState(data){
+  board = data.board; current = data.current; hands = data.hands; deck = data.deck;
+  discard = data.discard; protectedCells = data.protectedCells; boundCells = data.boundCells;
+  bits = data.bits; placementsLeft = data.placementsLeft; cardUsesLeft = data.cardUsesLeft;
+  doubleTapCostCap = data.doubleTapCostCap; freeDropActive = data.freeDropActive;
+  lastMindRead = data.lastMindRead; passStreak = data.passStreak; turnNumber = data.turnNumber;
+  gameOver = data.gameOver; idSeed = data.idSeed;
+  redrawUsedThisTurn = !!data.redrawUsedThisTurn;
+  onlineJoined = data.joined || onlineJoined;
+  onlineWaitingForOpponent = !(onlineJoined[1] && onlineJoined[2]);
+  onlineLastAppliedSeq = data.seq;
+  pendingCard = null; // never trust a mid-selection state from a stale local session
+  redrawPending = false;
+}
+
+async function pushOnlineState(){
+  if(!onlineRoomCode || !storageAvailable()) return;
+  try{
+    const seq = onlineLastAppliedSeq + 1;
+    const state = serializeState(seq);
+    const result = await window.storage.set('room:'+onlineRoomCode, JSON.stringify(state), true);
+    if(result){ onlineLastAppliedSeq = seq; }
+  } catch(e){ console.error('online push error', e); }
+}
+
+async function pollOnlineState(){
+  if(!onlineRoomCode || !storageAvailable()) return;
+  try{
+    const result = await window.storage.get('room:'+onlineRoomCode, true);
+    if(!result) return;
+    const data = JSON.parse(result.value);
+    if(data.seq > onlineLastAppliedSeq){
+      const wasWaiting = onlineWaitingForOpponent;
+      applyRemoteState(data);
+      if(wasWaiting && !onlineWaitingForOpponent) hideWaitingOverlay();
+      updateOnlineInfoBar();
+      render();
+    }
+  } catch(e){ /* transient read error, ignore and retry next interval */ }
+}
+
+function startPolling(){
+  stopPolling();
+  onlinePollTimer = setInterval(pollOnlineState, 2500);
+}
+function stopPolling(){
+  if(onlinePollTimer){ clearInterval(onlinePollTimer); onlinePollTimer = null; }
+}
+
+async function createRoom(){
+  const msgEl = document.getElementById('lobbyMsg');
+  if(!storageAvailable()){
+    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage'); return;
+  }
+  msgEl.className='lobby-msg'; msgEl.textContent = tr('lobbyCreating');
+  const code = generateRoomCode();
+  onlineRoomCode = code;
+  myPlayerNumber = 1;
+  onlineMode = true;
+  onlineJoined = {1:true, 2:false};
+  onlineWaitingForOpponent = true;
+  onlineLastAppliedSeq = 0;
+  initGame();
+  try{
+    const seq = 1;
+    const state = serializeState(seq);
+    const result = await window.storage.set('room:'+code, JSON.stringify(state), true);
+    if(!result) throw new Error('write failed');
+    onlineLastAppliedSeq = seq;
+  } catch(e){
+    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage');
+    onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
+    return;
+  }
+  showGameScreen();
+  updateOnlineInfoBar();
+  showWaitingOverlay(code);
+  startPolling();
+}
+
+async function joinRoom(){
+  const input = document.getElementById('joinCodeInput');
+  const code = input.value.trim().toUpperCase();
+  const msgEl = document.getElementById('lobbyMsg');
+  if(!code){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorNoCode'); return; }
+  if(!storageAvailable()){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage'); return; }
+  msgEl.className='lobby-msg'; msgEl.textContent = tr('lobbyJoining');
+  try{
+    const result = await window.storage.get('room:'+code, true);
+    if(!result){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorNotFound'); return; }
+    const data = JSON.parse(result.value);
+    if(data.joined && data.joined[2]){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorFull'); return; }
+    onlineRoomCode = code;
+    myPlayerNumber = 2;
+    onlineMode = true;
+    applyRemoteState(data);
+    onlineJoined[2] = true;
+    onlineWaitingForOpponent = false;
+    const seq = onlineLastAppliedSeq + 1;
+    const pushResult = await window.storage.set('room:'+code, JSON.stringify(serializeState(seq)), true);
+    if(!pushResult) throw new Error('write failed');
+    onlineLastAppliedSeq = seq;
+    showGameScreen();
+    updateOnlineInfoBar();
+    render();
+    startPolling();
+  } catch(e){
+    msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage');
+  }
+}
+
+function leaveRoom(){
+  stopPolling();
+  onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
+  onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
+  hideWaitingOverlay();
+  document.getElementById('onlineInfoBar').style.display='none';
+  document.getElementById('overlay').classList.remove('show');
+  showTitleScreen();
+}
+
+// ---------- i18n wiring ----------
+function applyI18nStatic(){
+  document.getElementById('pageTitle').textContent = tr('pageTitle');
+  document.title = tr('pageTitle');
+  document.getElementById('titleH1').textContent = tr('h1');
+  document.getElementById('titleSubtitle').textContent = tr('subtitle');
+  document.getElementById('modeLocalTitle').textContent = tr('modeLocalTitle');
+  document.getElementById('modeLocalBadge').textContent = tr('modeLocalBadge');
+  document.getElementById('modeLocalDesc').textContent = tr('modeLocalDesc');
+  document.getElementById('modeOnlineCustomTitle').textContent = tr('modeOnlineCustomTitle');
+  document.getElementById('modeOnlineCustomBadge').textContent = tr('modeOnlineCustomBadge');
+  document.getElementById('modeOnlineCustomDesc').textContent = tr('modeOnlineCustomDesc');
+  document.getElementById('modeOnlinePublicTitle').textContent = tr('modeOnlinePublicTitle');
+  document.getElementById('modeOnlinePublicBadge').textContent = tr('modeOnlinePublicBadge');
+  document.getElementById('modeOnlinePublicDesc').textContent = tr('modeOnlinePublicDesc');
+  document.getElementById('lobbyH1').textContent = tr('lobbyH1');
+  document.getElementById('lobbyCreateHeading').textContent = tr('lobbyCreateHeading');
+  document.getElementById('createRoomBtn').textContent = tr('createRoomBtn');
+  document.getElementById('lobbyOrLabel').textContent = tr('lobbyOrLabel');
+  document.getElementById('lobbyJoinHeading').textContent = tr('lobbyJoinHeading');
+  document.getElementById('joinCodeInput').placeholder = tr('joinCodeInputPlaceholder');
+  document.getElementById('joinRoomBtn').textContent = tr('joinRoomBtn');
+  document.getElementById('lobbyBackBtn').textContent = tr('lobbyBackBtn');
+  document.getElementById('waitingMsg').textContent = tr('waitingMsg');
+  document.getElementById('waitingHint').textContent = tr('waitingHint');
+  document.getElementById('waitingCancelBtn').textContent = tr('waitingCancelBtn');
+  document.getElementById('backToTitleLabel').textContent = tr('backToTitleLabel');
+  document.getElementById('gameH1').textContent = tr('h1');
+  document.getElementById('gameSubtitle').textContent = tr('subtitle');
+  document.getElementById('labelBlackPlayer').textContent = tr('labelBlackPlayer');
+  document.getElementById('labelWhitePlayer').textContent = tr('labelWhitePlayer');
+  document.getElementById('labelStones1').textContent = tr('labelStones');
+  document.getElementById('labelStones2').textContent = tr('labelStones');
+  document.getElementById('labelDeck').textContent = tr('labelDeck');
+  document.getElementById('labelCountUnit1').textContent = tr('labelCountUnit');
+  document.getElementById('labelCountUnit2').textContent = tr('labelCountUnit');
+  document.getElementById('labelDiscard').textContent = tr('labelDiscard');
+  document.getElementById('mindReadCloseBtn').textContent = tr('mindReadCloseBtn');
+  document.getElementById('modeRowBtn').textContent = tr('modeRowBtn');
+  document.getElementById('redrawBtn').textContent = tr('redrawBtn');
+  document.getElementById('redrawCancelBtn').textContent = tr('redrawCancelBtn');
+  document.getElementById('mindReadSkipBtn').textContent = tr('mindReadSkipBtn');
+  document.getElementById('modeColBtn').textContent = tr('modeColBtn');
+  document.getElementById('cancelBtn').textContent = tr('cancelBtn');
+  document.getElementById('passBtn').textContent = tr('passBtn');
+  document.getElementById('restartBtn').textContent = tr('restartBtn');
+  document.getElementById('leaveRoomInGameBtn').textContent = tr('leaveRoomBtn');
+  document.getElementById('leaveRoomAfterGameBtn').textContent = tr('leaveRoomAfterGameBtn');
+  document.getElementById('rulesSummary').textContent = tr('rulesSummary');
+  document.getElementById('playAgainBtn').textContent = tr('playAgainBtn');
+  if(typeof handRevealed !== 'undefined' && handRevealed){
+    [1,2].forEach(p=>{
+      const label = document.getElementById('revealBtn'+p+'Label');
+      if(label) label.textContent = handRevealed[p] ? tr('revealHide') : tr('revealShow');
+    });
+  }
+  renderRules();
+  updateOnlineInfoBar();
+  const jaBtns = ['langBtnJaTitle','langBtnJaLobby','langBtnJaGame'];
+  const enBtns = ['langBtnEnTitle','langBtnEnLobby','langBtnEnGame'];
+  jaBtns.concat(enBtns).forEach(id=>document.getElementById(id).classList.remove('active'));
+  (LANG==='ja'?jaBtns:enBtns).forEach(id=>document.getElementById(id).classList.add('active'));
+}
+
+function setLang(l){
+  LANG = l;
+  applyI18nStatic();
+  if(document.getElementById('screen-game').classList.contains('active') && typeof board !== 'undefined' && board) render();
+}
+
+// ---------- event wiring ----------
+document.getElementById('cancelBtn').addEventListener('click', cancelCard);
+document.getElementById('confirmBtn').addEventListener('click', confirmPendingCard);
+document.getElementById('passBtn').addEventListener('click', doPass);
+document.getElementById('restartBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
+document.getElementById('playAgainBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
+document.getElementById('revealBtn1').addEventListener('click', ()=>{ handRevealed[1] = !handRevealed[1]; render(); });
+document.getElementById('revealBtn2').addEventListener('click', ()=>{ handRevealed[2] = !handRevealed[2]; render(); });
+document.getElementById('mindReadCloseBtn').addEventListener('click', ()=>{ lastMindRead = null; render(); });
+document.getElementById('modeRowBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='row'; render(); } });
+document.getElementById('modeColBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='col'; render(); } });
+document.getElementById('redrawBtn').addEventListener('click', startRedraw);
+document.getElementById('redrawCancelBtn').addEventListener('click', cancelRedraw);
+document.getElementById('mindReadSkipBtn').addEventListener('click', skipMindReadSwap);
+
+document.getElementById('modeBtnLocal').addEventListener('click', ()=>{
+  onlineMode=false; myPlayerNumber=null; onlineRoomCode=null;
+  document.getElementById('onlineInfoBar').style.display='none';
+  showGameScreen();
+  initGame();
+});
+// Online custom match intentionally disabled in this public alpha build.
+document.getElementById('lobbyBackBtn').addEventListener('click', showTitleScreen);
+document.getElementById('createRoomBtn').addEventListener('click', createRoom);
+document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
+document.getElementById('waitingCancelBtn').addEventListener('click', leaveRoom);
+document.getElementById('backToTitleBtn').addEventListener('click', ()=>{
+  if(onlineMode){ leaveRoom(); } else { showTitleScreen(); }
+});
+document.getElementById('leaveRoomInGameBtn').addEventListener('click', leaveRoom);
+document.getElementById('leaveRoomAfterGameBtn').addEventListener('click', leaveRoom);
+
+['langBtnJaTitle','langBtnJaLobby','langBtnJaGame'].forEach(id=>document.getElementById(id).addEventListener('click', ()=>setLang('ja')));
+['langBtnEnTitle','langBtnEnLobby','langBtnEnGame'].forEach(id=>document.getElementById(id).addEventListener('click', ()=>setLang('en')));
+
+applyI18nStatic();
+showTitleScreen();
+</script>
+</body>
+</html>
