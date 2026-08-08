@@ -844,7 +844,7 @@ const CARD_TYPES = {
   bind:{name:{ja:'バインド',en:'Bind'},icon:'🔒',desc:{ja:'空マスを1つ選び、次の自分の配置フェーズまで封鎖',en:'Pick one empty cell; nobody can place there until your next placement phase.'},cost:4,count:4},
   swap:{name:{ja:'スワップシフト',en:'Swap Shift'},icon:'🔀',desc:{ja:'起点になる石を1つ指定し、隣接する異なる色の石と位置を入れ替える（連鎖なし）',en:'Pick a starting stone, then swap it with an adjacent stone of the opposite color (no chain reaction).'},cost:6,count:4},
   twoDrop:{name:{ja:'ツードロップ',en:'Two Drop'},icon:'⏫',desc:{ja:'このターンだけ石を2枚配置できる',en:'Place two stones this turn instead of one.'},cost:8,count:2},
-  triReverse:{name:{ja:'トライリバース',en:'Tri Reverse'},icon:'🎯',desc:{ja:'縦横斜めに連続する3マスを選び、石を色不問で裏返す',en:'Pick 3 consecutive cells in a line and flip whatever stones are on them, regardless of color.'},cost:6,count:3},
+  triReverse:{name:{ja:'ツーリバース',en:'Two Reverse'},icon:'🎯',desc:{ja:'縦横斜めの連なる2マスを選び、石を色不問で裏返す',en:'Pick 2 adjacent cells in a line and flip whatever stones are on them, regardless of color.'},cost:6,count:3},
   mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:3},
   doubleTap:{name:{ja:'ダブルタップ',en:'Double Tap'},icon:'✌️',desc:{ja:'手札のコスト6以下のスキルを、このターン追加で2枚まで使用できるようにする（各コストは通常通り消費）',en:'This turn, you may use up to 2 additional skill cards costing 6 or less (each still costs its normal amount).'},cost:2,count:3},
   triBlock:{name:{ja:'トライブロック',en:'Tri Block'},icon:'🧱',desc:{ja:'縦横斜めに連続する自分の石3つを、次の自分のターンまで全スキル効果に対して保護する',en:'Pick 3 consecutive stones of your own color in a line; they become immune to all skill effects until your next turn.'},cost:6,count:2},
@@ -1105,7 +1105,9 @@ function placeStone(r,c,mv){
 }
 
 function endTurn(){
+  const whiteFirstTurnBonus = (current === 2 && turnNumber === 2);
   drawCard(current);
+  if(whiteFirstTurnBonus) drawCard(current);
   current = 3-current;
   turnNumber += 1;
   Object.keys(protectedCells).forEach(k=>{
@@ -1431,10 +1433,7 @@ function handleCardTarget(r,c){
       const dr = r-fr, dc = c-fc;
       const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
       if(!adjacent) return;
-      const tr = r+dr, tc = c+dc;
-      if(tr<0||tr>=SIZE||tc<0||tc>=SIZE) return;
       pendingCard.second = {r,c};
-      pendingCard.third = {r:tr,c:tc};
       pendingCard.step = 2;
       render();
     }
@@ -1483,9 +1482,11 @@ function handleCardTarget(r,c){
 }
 
 function applyTrioEffect(){
-  if(!pendingCard || !pendingCard.third) return;
+  if(!pendingCard || !pendingCard.second) return;
   const type = pendingCard.card.type;
-  const cells = [pendingCard.first, pendingCard.second, pendingCard.third];
+  const cells = type==='triReverse'
+    ? [pendingCard.first, pendingCard.second]
+    : [pendingCard.first, pendingCard.second, pendingCard.third];
   if(type==='triReverse'){
     cells.forEach(({r,c})=>{
       const k = cellKey(r,c);
@@ -1568,10 +1569,7 @@ function getCardTargets(){
           const {r:fr,c:fc} = pendingCard.first;
           const dr = r-fr, dc = c-fc;
           const adjacent = Math.abs(dr)<=1 && Math.abs(dc)<=1 && !(dr===0&&dc===0);
-          if(adjacent){
-            const tr = r+dr, tc = c+dc;
-            if(tr>=0&&tr<SIZE&&tc>=0&&tc<SIZE) set.add(key);
-          }
+          if(adjacent) set.add(key);
         }
       } else if(type==='triBlock'){
         if(pendingCard.step===0){
@@ -1625,7 +1623,9 @@ function render(){
       if(cardTargets.has(key)) div.classList.add('card-target','clickable');
       if(pendingCard && (pendingCard.step===1 || (pendingCard.step===2 && (pendingCard.card.type==='triReverse'||pendingCard.card.type==='triBlock'))) && pendingCard.first && pendingCard.first.r===r && pendingCard.first.c===c) div.classList.add('selected-source');
       if(pendingCard && pendingCard.step===2 && (pendingCard.card.type==='triReverse'||pendingCard.card.type==='triBlock')){
-        const trio = [pendingCard.first, pendingCard.second, pendingCard.third];
+        const trio = pendingCard.card.type==='triReverse'
+          ? [pendingCard.first, pendingCard.second]
+          : [pendingCard.first, pendingCard.second, pendingCard.third];
         if(trio.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
       }
       if(pendingCard && LINE_DOMINATION_TYPES.includes(pendingCard.card.type) && pendingCard.lines && pendingCard.lines.length>0){
@@ -1841,10 +1841,10 @@ function render(){
       } else if(pendingCard.card.type==='triReverse' && pendingCard.step===0){
         msg += LANG==='ja' ? '起点となるマスを1つ選んでください。' : 'Choose a starting cell.';
       } else if(pendingCard.card.type==='triReverse' && pendingCard.step===1){
-        msg += LANG==='ja' ? '起点から隣接するマス（縦横斜め）を選んで方向を決めてください。延長線上の3マス目まで自動で選ばれます。' : 'Choose an adjacent cell to set the direction; the 3rd cell is chosen automatically along that line.';
+        msg += LANG==='ja' ? '起点から隣接するマス（縦横斜め）をもう1つ選んでください。' : 'Choose one more adjacent cell (any of the 8 directions).';
       } else if(pendingCard.card.type==='triReverse' && pendingCard.step===2){
-        msg += LANG==='ja' ? '金色の枠で囲まれた3マスでよろしければ「この3マスで確定」を押してください。' : 'If the 3 highlighted cells look right, press "Confirm these 3 cells".';
-        confirmBtn.textContent = LANG==='ja' ? 'この3マスで確定' : 'Confirm these 3 cells';
+        msg += LANG==='ja' ? '金色の枠で囲まれた2マスでよろしければ「この2マスで確定」を押してください。' : 'If the 2 highlighted cells look right, press "Confirm these 2 cells".';
+        confirmBtn.textContent = LANG==='ja' ? 'この2マスで確定' : 'Confirm these 2 cells';
         if(canAct()) confirmBtn.style.display = 'inline-block';
       } else if(pendingCard.card.type==='triBlock' && pendingCard.step===0){
         msg += LANG==='ja' ? '起点となる自分の石を1つ選んでください。' : 'Choose one of your stones as the starting point.';
@@ -1951,14 +1951,14 @@ function renderRules(){
   const bitRules = LANG==='ja' ? [
     '各プレイヤーはゲーム開始時に「ビット」を'+STARTING_BITS+'持ちます（使い切りで回復・増加はしません）。',
     '初期配置が崩れる前の事故を防ぐため、対局開始から'+SKILL_LOCK_TURNS+'ターン（黒・白それぞれの初手）はスキルカードを使用できません。'+(SKILL_LOCK_TURNS+1)+'ターン目から解禁されます。',
-    '各ターンの終わりに、自分の手札（最大5枚）へ共用デッキから自動で1枚ドローします。',
+    '各ターンの終わりに、自分の手札（最大5枚）へ共用デッキから自動で1枚ドローします。ただし白（後攻）の1巡目のみ、対抗策を整えやすいよう2枚ドローします。',
     '石を置く前に、手札から1枚だけ選んで使用できます（使わなくてもOK）。カードにはそれぞれ消費ビットがあり、所持ビットが足りないカードは使用できません。使用後、通常通り石を置きます。',
     'スキルを使う前（スキルフェーズの前）に、1ターン1回まで「🔁 リドロー」を使えます。ビットを'+REDRAW_COST+'消費して手札を1枚選んで使用済みスキルカード置き場に捨て、その場で新しく1枚ドローします。',
     '使用したスキルカードは画面上部の「使用済みスキルカード置き場」に公開の状態で積まれていきます。共用デッキが尽きるとこの置き場がシャッフルされ、新しい山札として再利用されます。'
   ] : [
     'Each player starts with '+STARTING_BITS+' Bits (a one-time resource that never regenerates).',
     'To prevent early-game accidents, skill cards are locked for the first '+SKILL_LOCK_TURNS+' turns (Black\u2019s and White\u2019s opening moves). They unlock from turn '+(SKILL_LOCK_TURNS+1)+'.',
-    'At the end of each turn you automatically draw 1 card from the shared deck into your hand (max 5).',
+    'At the end of each turn you automatically draw 1 card from the shared deck into your hand (max 5). Exception: at the end of White\u2019s (second player) very first turn, White draws 2 cards instead of 1, to help build up counter-play options.',
     'Before placing a stone you may use one card from your hand (optional). Each card costs Bits; you can\u2019t use a card you can\u2019t afford. After using it, place a stone as usual.',
     'Before using a skill (once per turn), you may "🔁 Redraw": spend '+REDRAW_COST+' Bit to discard one hand card to the used pile and immediately draw a new one.',
     'Used skill cards are shown face-up in the "Used Skill Cards" area above. When the shared deck runs out, this pile is reshuffled into a new deck.'
