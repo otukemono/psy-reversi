@@ -2251,7 +2251,7 @@ function applyRemoteState(data){
   const keepLastMindRead = lastMindRead;
   const preserveMindReadState = !!(pendingCard && pendingCard.card && pendingCard.card.type==='mindRead'
     && pendingCard.mindReadOpId && data.mindReadOp && data.mindReadOp.id===pendingCard.mindReadOpId);
-  board=data.board; current=data.current; deck=data.deck; discard=data.discard; protectedCells=data.protectedCells||{}; boundCells=data.boundCells||{}; bits=data.bits; placementsLeft=data.placementsLeft; cardUsesLeft=data.cardUsesLeft; doubleTapCostCap=data.doubleTapCostCap; freeDropActive=data.freeDropActive; passStreak=data.passStreak; turnNumber=data.turnNumber; gameOver=data.gameOver; idSeed=data.idSeed; redrawUsedThisTurn=!!data.redrawUsedThisTurn; onlineJoined=data.joined||onlineJoined; onlineWaitingForOpponent=!(onlineJoined[1]&&onlineJoined[2]); onlineLastAppliedSeq=data.seq||0; redrawPending=false;
+  board=data.board; current=data.current; deck=data.deck||[]; discard=data.discard||[]; protectedCells=data.protectedCells||{}; boundCells=data.boundCells||{}; bits=data.bits; placementsLeft=data.placementsLeft; cardUsesLeft=data.cardUsesLeft; doubleTapCostCap=(data.doubleTapCostCap===undefined?null:data.doubleTapCostCap); freeDropActive=!!data.freeDropActive; passStreak=data.passStreak; turnNumber=data.turnNumber; gameOver=!!data.gameOver; idSeed=data.idSeed; redrawUsedThisTurn=!!data.redrawUsedThisTurn; onlineJoined=data.joined||onlineJoined; onlineWaitingForOpponent=!(onlineJoined[1]&&onlineJoined[2]); onlineLastAppliedSeq=data.seq||0; redrawPending=false;
   pendingCard = preserveMindReadState ? keepPendingCard : null;
   lastMindRead = preserveMindReadState ? keepLastMindRead : null;
   handCounts = data.handCounts || handCounts;
