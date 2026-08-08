@@ -784,33 +784,32 @@ window.psyFirebase = {
 
     if(!claim.committed) return {ok:false, reason:'full'};
 
-    // Only after the slot is secured do we mark White as joined.
-    // If this second step fails, roll back the slot so the room is not
-    // left permanently "full" by a half-completed join.
-    const stateRef=ref(db,'rooms/'+code+'/state');
-    const stateTxn=await runTransaction(stateRef, state=>{
-      if(!state) return;
-      state.joined=state.joined||{1:true,2:false};
-      state.joined[1]=true;
-      state.joined[2]=true;
-      state.seq=(state.seq||0)+1;
-      return state;
-    }, {applyLocally:false});
-
-    if(!stateTxn.committed){
+    // Mark White as joined in state. Plain read-then-write (not a
+    // transaction) - nobody else is writing state at this exact moment
+    // (the host is idle waiting), so the tiny race window is an acceptable
+    // trade for avoiding transaction-specific edge cases. If this fails we
+    // roll back the slot and surface the REAL underlying error message.
+    let joinedState;
+    try{
+      const stateSnap=await get(ref(db,'rooms/'+code+'/state'));
+      if(!stateSnap.exists()){
+        await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
+        return {ok:false, reason:'not-found'};
+      }
+      joinedState=stateSnap.val();
+      joinedState.joined=joinedState.joined||{1:true,2:false};
+      joinedState.joined[1]=true;
+      joinedState.joined[2]=true;
+      joinedState.seq=(joinedState.seq||0)+1;
+      await set(ref(db,'rooms/'+code+'/state'), joinedState);
+    }catch(e){
+      console.error('claimGuest: state update failed:', e && e.code, e && e.message);
       await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
-      throw new Error('state-join-update-failed');
+      throw new Error('state-join-update-failed: '+(e && (e.code||e.message)||'unknown'));
     }
 
-    // Read state + our now-authorized hand as two separately-scoped reads
-    // (see note above on why a whole-room get() would be denied).
-    const finalStateSnap=await get(ref(db,'rooms/'+code+'/state'));
-    if(!finalStateSnap.exists()){
-      await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
-      return {ok:false, reason:'not-found'};
-    }
     const whiteHandSnap=await get(ref(db,'rooms/'+code+'/hands/white'));
-    return {ok:true, room:{ state: finalStateSnap.val(), hands:{ white: whiteHandSnap.exists()?whiteHandSnap.val():[] } }};
+    return {ok:true, room:{ state: joinedState, hands:{ white: whiteHandSnap.exists()?whiteHandSnap.val():[] } }};
   },
   async releaseGuest(code){
     const user=await authReady; if(!user || !code) return false;
@@ -852,22 +851,28 @@ window.psyFirebase = {
   },
   async pushState(code,state,role){
     const user=await authReady; if(!user) throw new Error('auth');
-    // Identity check reads players (broadly readable) separately, then the
-    // transaction itself only ever touches state - never the whole room -
-    // so it never needs read access to the other player's private hand.
+    // Identity check reads players (broadly readable) separately - state
+    // itself is updated via plain read-then-write rather than a
+    // runTransaction(), since transactions on this path have shown
+    // unexplained commit failures in production; genuine concurrent writers
+    // to state are rare by design (only the acting player pushes turns,
+    // and the mind-read handshake is a strict back-and-forth), so the small
+    // race window this trades away transaction-safety for is acceptable.
     const playersSnap=await get(ref(db,'rooms/'+code+'/players'));
     if(!playersSnap.exists()) return false;
     const players=playersSnap.val();
     const expected=role===1?players.black:players.white;
     if(expected!==user.uid) return false;
-    const stateRef=ref(db,'rooms/'+code+'/state');
-    const result=await runTransaction(stateRef, currentState=>{
-      if(!currentState) return;
-      const currentSeq=currentState.seq||0;
+    try{
+      const stateSnap=await get(ref(db,'rooms/'+code+'/state'));
+      const currentSeq=(stateSnap.exists() && stateSnap.val().seq)||0;
       if((state.seq||0)<=currentSeq) state.seq=currentSeq+1;
-      return state;
-    }, {applyLocally:false});
-    return result.committed;
+      await set(ref(db,'rooms/'+code+'/state'), state);
+      return true;
+    }catch(e){
+      console.error('pushState failed:', e && e.code, e && e.message);
+      return false;
+    }
   },
   listen(code,cb){
     if(unsubscribeRoom) unsubscribeRoom();
