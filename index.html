@@ -761,28 +761,59 @@ window.psyFirebase = {
   async claimGuest(code){
     const user=await authReady; if(!user) throw new Error('auth');
 
-    // Claim only the white-player slot first.  This avoids aborting a
-    // transaction over the entire (large) game-state object.
+    // The white slot is the single source of truth for admission.
+    // Re-entering with the same anonymous Firebase UID is allowed.
     const whiteRef=ref(db,'rooms/'+code+'/players/white');
     const claim=await runTransaction(whiteRef, current=>{
       if(current && current!==user.uid) return;
       return user.uid;
     }, {applyLocally:false});
-    if(!claim.committed) return null;
 
-    // Mark White as joined in the shared game state.
+    if(!claim.committed) return {ok:false, reason:'full'};
+
+    // Only after the slot is secured do we mark White as joined.
+    // If this second step fails, roll back the slot so the room is not
+    // left permanently "full" by a half-completed join.
     const stateRef=ref(db,'rooms/'+code+'/state');
     const stateTxn=await runTransaction(stateRef, state=>{
       if(!state) return;
       state.joined=state.joined||{1:true,2:false};
+      state.joined[1]=true;
       state.joined[2]=true;
       state.seq=(state.seq||0)+1;
       return state;
     }, {applyLocally:false});
-    if(!stateTxn.committed) throw new Error('state-join-update-failed');
+
+    if(!stateTxn.committed){
+      await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
+      throw new Error('state-join-update-failed');
+    }
 
     const snap=await get(ref(db,'rooms/'+code));
-    return snap.exists()?snap.val():null;
+    if(!snap.exists()){
+      await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
+      return {ok:false, reason:'not-found'};
+    }
+    return {ok:true, room:snap.val()};
+  },
+  async releaseGuest(code){
+    const user=await authReady; if(!user || !code) return false;
+    const whiteRef=ref(db,'rooms/'+code+'/players/white');
+    const released=await runTransaction(whiteRef, current=>{
+      if(current!==user.uid) return;
+      return null;
+    }, {applyLocally:false});
+    if(!released.committed) return false;
+
+    const stateRef=ref(db,'rooms/'+code+'/state');
+    await runTransaction(stateRef, state=>{
+      if(!state) return state;
+      state.joined=state.joined||{1:true,2:false};
+      state.joined[2]=false;
+      state.seq=(state.seq||0)+1;
+      return state;
+    }, {applyLocally:false});
+    return true;
   },
   async createRoom(code,state){ const user=await authReady; if(!user) throw new Error('auth'); await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,createdAt:Date.now()}); return true; },
   async pushState(code,state,role){
@@ -947,6 +978,8 @@ let onlineLastAppliedSeq = 0;
 let onlinePollTimer = null;
 let onlineJoined = {1:false, 2:false};
 let onlineWaitingForOpponent = false;
+let onlineJoinPending = false;
+let onlineCreatePending = false;
 
 function cellKey(r,c){ return r+','+c; }
 
@@ -2031,17 +2064,93 @@ function startPolling(){
 }
 function stopPolling(){ if(window.psyFirebase) window.psyFirebase.unlisten(); if(onlinePollTimer){clearInterval(onlinePollTimer);onlinePollTimer=null;} }
 async function createRoom(){
-  const msgEl=document.getElementById('lobbyMsg'); msgEl.className='lobby-msg'; msgEl.textContent=tr('lobbyCreating');
-  try{ const user=await waitForFirebase(); if(!user) throw new Error('auth'); let code,existing; do{code=generateRoomCode();existing=await window.psyFirebase.getRoom(code);}while(existing);
-    onlineRoomCode=code; myPlayerNumber=1; onlineMode=true; onlineJoined={1:true,2:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0; initGame(); const state=serializeState(1); await window.psyFirebase.createRoom(code,state); onlineLastAppliedSeq=1; showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
-  }catch(e){console.error(e);msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorStorage');onlineMode=false;onlineRoomCode=null;myPlayerNumber=null;}
+  if(onlineCreatePending) return;
+  onlineCreatePending=true;
+  const btn=document.getElementById('createRoomBtn');
+  const msgEl=document.getElementById('lobbyMsg');
+  btn.disabled=true; msgEl.className='lobby-msg'; msgEl.textContent=tr('lobbyCreating');
+  try{
+    const user=await waitForFirebase(); if(!user) throw new Error('auth');
+    let code,existing;
+    do{ code=generateRoomCode(); existing=await window.psyFirebase.getRoom(code); }while(existing);
+
+    onlineRoomCode=code; myPlayerNumber=1; onlineMode=true;
+    onlineJoined={1:true,2:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0;
+    initGame();
+    const state=serializeState(1);
+    await window.psyFirebase.createRoom(code,state);
+    onlineLastAppliedSeq=1;
+    showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
+  }catch(e){
+    console.error('createRoom failed',e);
+    msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorStorage');
+    onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
+  }finally{
+    onlineCreatePending=false; btn.disabled=false;
+  }
 }
 async function joinRoom(){
-  const input=document.getElementById('joinCodeInput'); const code=input.value.trim().toUpperCase(); const msgEl=document.getElementById('lobbyMsg'); if(!code){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorNoCode');return;} msgEl.className='lobby-msg';msgEl.textContent=tr('lobbyJoining');
-  try{ const user=await waitForFirebase(); if(!user) throw new Error('auth'); const existing=await window.psyFirebase.getRoom(code); if(!existing||!existing.state){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorNotFound');return;} if(existing.players&&existing.players.white&&existing.players.white!==user.uid){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorFull');return;} const room=await window.psyFirebase.claimGuest(code); if(!room){msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorFull');return;} onlineRoomCode=code;myPlayerNumber=2;onlineMode=true;applyRemoteState(room.state);onlineWaitingForOpponent=false;showGameScreen();updateOnlineInfoBar();render();startPolling();
-  }catch(e){console.error(e);msgEl.className='lobby-msg error';msgEl.textContent=tr('lobbyErrorStorage');}
+  if(onlineJoinPending) return;
+  const input=document.getElementById('joinCodeInput');
+  const code=input.value.trim().toUpperCase();
+  const msgEl=document.getElementById('lobbyMsg');
+  const btn=document.getElementById('joinRoomBtn');
+  if(!code){ msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorNoCode'); return; }
+
+  onlineJoinPending=true; btn.disabled=true;
+  msgEl.className='lobby-msg'; msgEl.textContent=tr('lobbyJoining');
+
+  try{
+    const user=await waitForFirebase(); if(!user) throw new Error('auth');
+
+    // Read only to distinguish "not found".  Do NOT decide "full" here:
+    // admission is decided atomically by claimGuest(), avoiding stale reads.
+    const existing=await window.psyFirebase.getRoom(code);
+    if(!existing||!existing.state){
+      msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorNotFound'); return;
+    }
+
+    const result=await window.psyFirebase.claimGuest(code);
+    if(!result?.ok){
+      msgEl.className='lobby-msg error';
+      msgEl.textContent=result?.reason==='not-found'?tr('lobbyErrorNotFound'):tr('lobbyErrorFull');
+      return;
+    }
+
+    const room=result.room;
+    onlineRoomCode=code; myPlayerNumber=2; onlineMode=true;
+    applyRemoteState(room.state);
+    onlineWaitingForOpponent=false;
+    showGameScreen(); updateOnlineInfoBar(); render(); startPolling();
+  }catch(e){
+    console.error('joinRoom failed',e);
+    msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorStorage');
+  }finally{
+    onlineJoinPending=false; btn.disabled=false;
+  }
 }
-function leaveRoom(){ stopPolling(); onlineMode=false;onlineRoomCode=null;myPlayerNumber=null;onlineJoined={1:false,2:false};onlineWaitingForOpponent=false;hideWaitingOverlay();document.getElementById('onlineInfoBar').style.display='none';document.getElementById('overlay').classList.remove('show');showTitleScreen(); }
+async function leaveRoom(){
+  const code=onlineRoomCode;
+  const role=myPlayerNumber;
+
+  // Tear down the local UI immediately.
+  stopPolling();
+  onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
+  onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
+  hideWaitingOverlay();
+  document.getElementById('onlineInfoBar').style.display='none';
+  document.getElementById('overlay').classList.remove('show');
+  showTitleScreen();
+
+  // Then clean up Firebase best-effort.
+  if(!code||!window.psyFirebase) return;
+  try{
+    if(role===1) await window.psyFirebase.removeRoom(code);
+    else if(role===2) await window.psyFirebase.releaseGuest(code);
+  }catch(e){
+    console.warn('leaveRoom cleanup failed',e);
+  }
+}
 
 // ---------- i18n wiring ----------
 function applyI18nStatic(){
