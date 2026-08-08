@@ -759,16 +759,30 @@ window.psyFirebase = {
   async getRoom(code){ const snap=await get(ref(db,'rooms/'+code)); return snap.exists()?snap.val():null; },
   async setRoom(code,data){ await set(ref(db,'rooms/'+code),data); return true; },
   async claimGuest(code){
-    const roomRef=ref(db,'rooms/'+code);
     const user=await authReady; if(!user) throw new Error('auth');
-    const result=await runTransaction(roomRef, room=>{
-      if(!room || !room.state) return;
-      if(room.players && room.players.white && room.players.white !== user.uid) return;
-      room.players = room.players || {}; room.players.white=user.uid;
-      room.state.joined = room.state.joined || {1:true,2:false}; room.state.joined[2]=true;
-      room.state.seq=(room.state.seq||0)+1; return room;
+
+    // Claim only the white-player slot first.  This avoids aborting a
+    // transaction over the entire (large) game-state object.
+    const whiteRef=ref(db,'rooms/'+code+'/players/white');
+    const claim=await runTransaction(whiteRef, current=>{
+      if(current && current!==user.uid) return;
+      return user.uid;
     }, {applyLocally:false});
-    if(!result.committed) return null; return result.snapshot.val();
+    if(!claim.committed) return null;
+
+    // Mark White as joined in the shared game state.
+    const stateRef=ref(db,'rooms/'+code+'/state');
+    const stateTxn=await runTransaction(stateRef, state=>{
+      if(!state) return;
+      state.joined=state.joined||{1:true,2:false};
+      state.joined[2]=true;
+      state.seq=(state.seq||0)+1;
+      return state;
+    }, {applyLocally:false});
+    if(!stateTxn.committed) throw new Error('state-join-update-failed');
+
+    const snap=await get(ref(db,'rooms/'+code));
+    return snap.exists()?snap.val():null;
   },
   async createRoom(code,state){ const user=await authReady; if(!user) throw new Error('auth'); await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,createdAt:Date.now()}); return true; },
   async pushState(code,state,role){
