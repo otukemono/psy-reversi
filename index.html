@@ -658,7 +658,7 @@
     <div class="hand-panel" id="handPanel1">
       <div class="hand-head">
         <div class="hand-title"><span class="stone-dot b"></span><span id="labelBlackPlayer">黒プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">30</span></div>
+        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">0</span></div>
       </div>
       <button class="btn reveal-btn" id="revealBtn1">🔍 <span id="revealBtn1Label">自分の手札を見る</span></button>
       <div class="hand-cards" id="hand1"></div>
@@ -673,7 +673,7 @@
     <div class="hand-panel" id="handPanel2">
       <div class="hand-head">
         <div class="hand-title"><span class="stone-dot w"></span><span id="labelWhitePlayer">白プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">30</span></div>
+        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">0</span></div>
       </div>
       <button class="btn reveal-btn" id="revealBtn2">🔍 <span id="revealBtn2Label">自分の手札を見る</span></button>
       <div class="hand-cards" id="hand2"></div>
@@ -815,7 +815,16 @@ window.psyFirebase = {
     }, {applyLocally:false});
     return true;
   },
-  async createRoom(code,state){ const user=await authReady; if(!user) throw new Error('auth'); await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,createdAt:Date.now()}); return true; },
+  async createRoom(code,state,blackHand,whiteHand){
+    const user=await authReady; if(!user) throw new Error('auth');
+    await set(ref(db,'rooms/'+code),{players:{black:user.uid},state,hands:{black:blackHand,white:whiteHand},createdAt:Date.now()});
+    return true;
+  },
+  async pushHand(code,colorKey,hand){
+    const user=await authReady; if(!user) throw new Error('auth');
+    await set(ref(db,'rooms/'+code+'/hands/'+colorKey),hand);
+    return true;
+  },
   async pushState(code,state,role){
     const user=await authReady; if(!user) throw new Error('auth');
     const roomRef=ref(db,'rooms/'+code);
@@ -845,11 +854,11 @@ const CARD_TYPES = {
   swap:{name:{ja:'スワップシフト',en:'Swap Shift'},icon:'🔀',desc:{ja:'起点になる石を1つ指定し、隣接する異なる色の石と位置を入れ替える（連鎖なし）',en:'Pick a starting stone, then swap it with an adjacent stone of the opposite color (no chain reaction).'},cost:6,count:4},
   twoDrop:{name:{ja:'ツードロップ',en:'Two Drop'},icon:'⏫',desc:{ja:'このターンだけ石を2枚配置できる',en:'Place two stones this turn instead of one.'},cost:8,count:2},
   triReverse:{name:{ja:'ツーリバース',en:'Two Reverse'},icon:'🎯',desc:{ja:'縦横斜めの連なる2マスを選び、石を色不問で裏返す',en:'Pick 2 adjacent cells in a line and flip whatever stones are on them, regardless of color.'},cost:6,count:3},
-  mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:3},
+  mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:2},
   doubleTap:{name:{ja:'ダブルタップ',en:'Double Tap'},icon:'✌️',desc:{ja:'手札のコスト6以下のスキルを、このターン追加で2枚まで使用できるようにする（各コストは通常通り消費）',en:'This turn, you may use up to 2 additional skill cards costing 6 or less (each still costs its normal amount).'},cost:2,count:3},
   triBlock:{name:{ja:'トライブロック',en:'Tri Block'},icon:'🧱',desc:{ja:'縦横斜めに連続する自分の石3つを、次の自分のターンまで全スキル効果に対して保護する',en:'Pick 3 consecutive stones of your own color in a line; they become immune to all skill effects until your next turn.'},cost:6,count:2},
   freeDrop:{name:{ja:'フリードロップ',en:'Free Drop'},icon:'🌀',desc:{ja:'発動したターンは盤面の好きな空マスに石を置けるようになる',en:'This turn, you may place your stone on any empty cell, ignoring the usual flanking rule.'},cost:8,count:2},
-  recycle:{name:{ja:'リサイクル',en:'Recycle'},icon:'♻️',desc:{ja:'使用済みスキルカード置き場から1枚指定し、その効果を発動する（コストは対象カードのコスト+1。♻️自身は指定不可）',en:'Pick one card from the discard pile and trigger its effect again (cost = that card\u2019s cost + 1; Recycle itself cannot be targeted).'},cost:1,count:2},
+  recycle:{name:{ja:'リサイクル',en:'Recycle'},icon:'♻️',desc:{ja:'使用済みスキルカード置き場から1枚指定し、その効果を発動する（コストは対象カードのコスト+1。♻️自身は指定不可）',en:'Pick one card from the discard pile and trigger its effect again (cost = that card\u2019s cost + 1; Recycle itself cannot be targeted).'},cost:1,count:3},
   lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty).'},cost:10,count:1},
   dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both.'},cost:15,count:1},
   doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2}
@@ -857,7 +866,9 @@ const CARD_TYPES = {
 const LINE_DOMINATION_TYPES = ['lineDomination','dualLineDomination'];
 const MULTI_CELL_PICK_TYPES = {doubleBind: 2};
 const NO_TARGET_CARDS = ['twoDrop','freeDrop','doubleTap'];
-const STARTING_BITS = 30;
+const STARTING_BITS = 0;
+const BIT_ROUND_INCOME = 5;
+const BIT_CAP = 25;
 const SKILL_LOCK_TURNS = 2;
 const REDRAW_COST = 1;
 
@@ -980,6 +991,9 @@ let onlineJoined = {1:false, 2:false};
 let onlineWaitingForOpponent = false;
 let onlineJoinPending = false;
 let onlineCreatePending = false;
+let handCounts = {1:0, 2:0};        // opponent's hand SIZE only (contents hidden in online mode)
+let mindReadOp = null;              // cross-player mind-read request/reveal/swap handshake object
+let mindReadProcessedIds = new Set(); // guards against re-processing the same handshake phase twice
 
 function cellKey(r,c){ return r+','+c; }
 
@@ -1001,6 +1015,11 @@ function buildDeck(){
     }
   });
   return shuffle(d);
+}
+
+function grantRoundBits(){
+  bits[1] = Math.min(BIT_CAP, bits[1] + BIT_ROUND_INCOME);
+  bits[2] = Math.min(BIT_CAP, bits[2] + BIT_ROUND_INCOME);
 }
 
 function drawCard(player){
@@ -1038,6 +1057,7 @@ function initGame(){
   turnNumber = 1;
   redrawUsedThisTurn = false;
   redrawPending = false;
+  grantRoundBits();
   drawCard(1); drawCard(1); drawCard(1);
   drawCard(2); drawCard(2); drawCard(2);
   document.getElementById('overlay').classList.remove('show');
@@ -1110,6 +1130,7 @@ function endTurn(){
   if(whiteFirstTurnBonus) drawCard(current);
   current = 3-current;
   turnNumber += 1;
+  if(current === 1) grantRoundBits();
   Object.keys(protectedCells).forEach(k=>{
     if(protectedCells[k].caster === current) delete protectedCells[k];
   });
@@ -1279,6 +1300,7 @@ function confirmPendingCard(){
 function handleMindReadTarget(opponentIndex){
   if(!canAct()) return;
   if(!pendingCard || pendingCard.card.type !== 'mindRead' || pendingCard.awaitingSwap) return;
+  if(onlineMode){ requestOnlineMindRead(opponentIndex); return; }
   const opp = 3-current;
   const card = hands[opp][opponentIndex];
   if(!card) return;
@@ -1299,12 +1321,12 @@ function handleMindReadTarget(opponentIndex){
   pendingCard.revealedOpponentIndex = opponentIndex;
   checkGameEnd();
   render();
-  if(onlineMode) pushOnlineState();
 }
 
 function handleMindReadSwap(ownIndex){
   if(!canAct()) return;
-  if(!pendingCard || pendingCard.card.type !== 'mindRead' || !pendingCard.awaitingSwap) return;
+  if(!pendingCard || pendingCard.card.type !== 'mindRead' || pendingCard.awaitingSwap !== true) return;
+  if(onlineMode){ handleMindReadSwapOnline(ownIndex); return; }
   const opp = 3-current;
   const ownCard = hands[current][ownIndex];
   const oppCard = hands[opp][pendingCard.revealedOpponentIndex];
@@ -1316,7 +1338,8 @@ function handleMindReadSwap(ownIndex){
 
 function skipMindReadSwap(){
   if(!canAct()) return;
-  if(!pendingCard || pendingCard.card.type !== 'mindRead' || !pendingCard.awaitingSwap) return;
+  if(!pendingCard || pendingCard.card.type !== 'mindRead' || pendingCard.awaitingSwap !== true) return;
+  if(onlineMode){ skipMindReadSwapOnline(); return; }
   finishMindRead(false);
 }
 
@@ -1326,6 +1349,103 @@ function finishMindRead(swapped){
   checkGameEnd();
   render();
   if(onlineMode) pushOnlineState();
+}
+
+// ---------- online mind-read handshake ----------
+// Hands live in per-player Firebase paths that only that player can read, so a
+// caster can never directly read the opponent's hand array online. Instead we
+// negotiate over the shared (public) mindReadOp field: request -> revealed ->
+// swap-offered -> swap-done. Each side only ever reads/writes ITS OWN hand.
+function makeMindReadOpId(){ return 'mr'+Date.now()+Math.random().toString(36).slice(2,7); }
+
+async function requestOnlineMindRead(opponentIndex){
+  if(!pendingCard || pendingCard.card.type!=='mindRead' || pendingCard.awaitingSwap) return;
+  const cost = pendingCard.isRecycled ? pendingCard.dynamicCost : CARD_TYPES.mindRead.cost;
+  bits[current] = Math.max(0, bits[current]-cost);
+  const sourceCard = pendingCard.isRecycled ? pendingCard.recycleSourceCard : pendingCard.card;
+  const hand = hands[current];
+  const idx = hand.findIndex(c=>c.id===sourceCard.id);
+  if(idx>-1){ hand[idx].owner=current; discard.push(hand[idx]); hand.splice(idx,1); }
+  cardUsesLeft -= 1;
+  const id = makeMindReadOpId();
+  mindReadOp = {id, by: current, index: opponentIndex, phase: 'requested'};
+  pendingCard.awaitingSwap = 'waiting';
+  pendingCard.mindReadOpId = id;
+  pendingCard.revealedOpponentIndex = opponentIndex;
+  checkGameEnd();
+  render();
+  await pushOnlineState();
+}
+
+async function handleMindReadSwapOnline(ownIndex){
+  if(!pendingCard || pendingCard.card.type!=='mindRead' || pendingCard.awaitingSwap!==true || !mindReadOp) return;
+  const ownCard = hands[myPlayerNumber][ownIndex];
+  if(!ownCard) return;
+  pendingCard.swapOwnIndex = ownIndex;
+  pendingCard.awaitingSwap = 'waiting-swap';
+  mindReadOp = {...mindReadOp, phase:'swap-offered', offeredType: ownCard.type};
+  render();
+  await pushOnlineState();
+}
+
+async function skipMindReadSwapOnline(){
+  if(!pendingCard || pendingCard.card.type!=='mindRead' || pendingCard.awaitingSwap!==true) return;
+  if(lastMindRead) lastMindRead.swapped = false;
+  pendingCard = null;
+  mindReadOp = null;
+  checkGameEnd();
+  render();
+  await pushOnlineState();
+}
+
+// Called after every applied remote state update while online. Reacts to the
+// current phase of mindReadOp if (and only if) this client needs to act on it.
+async function processIncomingMindReadOp(){
+  if(!onlineMode || !mindReadOp || !myPlayerNumber) return;
+  const op = mindReadOp;
+  const iAmTarget = op.by !== myPlayerNumber;
+
+  if(op.phase==='requested' && iAmTarget && !mindReadProcessedIds.has(op.id+':reveal')){
+    mindReadProcessedIds.add(op.id+':reveal');
+    const myCard = hands[myPlayerNumber][op.index];
+    mindReadOp = {...op, phase:'revealed', revealedType: myCard ? myCard.type : null};
+    await pushOnlineState();
+    return;
+  }
+
+  if(op.phase==='revealed' && op.by===myPlayerNumber && pendingCard && pendingCard.mindReadOpId===op.id && pendingCard.awaitingSwap==='waiting'){
+    lastMindRead = {player: opponentOf(myPlayerNumber), index: op.index, type: op.revealedType};
+    pendingCard.awaitingSwap = true;
+    render();
+    return;
+  }
+
+  if(op.phase==='swap-offered' && iAmTarget && !mindReadProcessedIds.has(op.id+':swap')){
+    mindReadProcessedIds.add(op.id+':swap');
+    const myCard = hands[myPlayerNumber][op.index];
+    const returnedType = myCard ? myCard.type : null;
+    if(myCard){
+      hands[myPlayerNumber][op.index] = {id:'swap-'+Date.now()+Math.random().toString(36).slice(2,6), type: op.offeredType};
+    }
+    mindReadOp = {...op, phase:'swap-done', returnedType};
+    await pushOnlineState();
+    return;
+  }
+
+  if(op.phase==='swap-done' && op.by===myPlayerNumber && pendingCard && pendingCard.mindReadOpId===op.id && !mindReadProcessedIds.has(op.id+':finish')){
+    mindReadProcessedIds.add(op.id+':finish');
+    const myIdx = pendingCard.swapOwnIndex;
+    if(myIdx!==undefined && hands[myPlayerNumber][myIdx]){
+      hands[myPlayerNumber][myIdx] = {id:'swap-'+Date.now()+Math.random().toString(36).slice(2,6), type: op.returnedType};
+    }
+    if(lastMindRead) lastMindRead.swapped = true;
+    pendingCard = null;
+    mindReadOp = null;
+    checkGameEnd();
+    render();
+    await pushOnlineState();
+    return;
+  }
 }
 
 function canRedraw(){
@@ -1366,9 +1486,12 @@ function handleRedrawDiscard(idx){
 
 function cancelCard(){
   if(!canAct()) return;
-  if(pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap) return;
+  if(pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true) return;
+  const wasMindReadWaiting = pendingCard && pendingCard.card.type==='mindRead' && !!pendingCard.awaitingSwap;
   pendingCard = null;
+  if(wasMindReadWaiting) mindReadOp = null;
   render();
+  if(wasMindReadWaiting && onlineMode) pushOnlineState();
 }
 
 function handleCardTarget(r,c){
@@ -1662,7 +1785,7 @@ function render(){
 
   // hands
   const mindReadTargeting = pendingCard && pendingCard.card.type==='mindRead' && !pendingCard.awaitingSwap;
-  const mindReadSwapChoosing = pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap;
+  const mindReadSwapChoosing = pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true;
   [1,2].forEach(p=>{
     const handEl = document.getElementById('hand'+p);
     handEl.innerHTML = '';
@@ -1734,7 +1857,7 @@ function render(){
       }
     }
     const btn = document.getElementById('revealBtn'+p);
-    btn.disabled = isMindReadTarget;
+    btn.disabled = isMindReadTarget || (onlineMode && p !== myPlayerNumber);
     document.getElementById('revealBtn'+p+'Label').textContent = revealed ? tr('revealHide') : tr('revealShow');
     btn.classList.toggle('revealed', revealed);
     document.getElementById('handPanel'+p).classList.toggle('active-turn', p===current && !gameOver);
@@ -1876,7 +1999,11 @@ function render(){
         msg += LANG==='ja' ? '金色の枠で囲まれたマスでよろしければ「このマスで確定」を押してください。' : 'If the highlighted cells look right, press "Confirm these cells".';
         confirmBtn.textContent = LANG==='ja' ? 'このマスで確定' : 'Confirm these cells';
         if(canAct()) confirmBtn.style.display = 'inline-block';
-      } else if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap){
+      } else if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap==='waiting'){
+        msg += LANG==='ja' ? '🔮 開示をリクエスト中です。相手の応答を待っています…' : '🔮 Peek request sent \u2014 waiting for the opponent to respond…';
+      } else if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap==='waiting-swap'){
+        msg += LANG==='ja' ? '🔮 交換を申請中です。相手の応答を待っています…' : '🔮 Swap offer sent \u2014 waiting for the opponent to respond…';
+      } else if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true){
         const revealedType = lastMindRead ? CARD_TYPES[lastMindRead.type] : null;
         msg += LANG==='ja'
           ? (revealedType ? '相手の手札は「'+revealedType.icon+' '+revealedType.name[LANG]+'」でした。自分の手札と交換する場合はカードを選んでください。交換しない場合は「スキップ」を押してください。' : '交換する場合は自分の手札を選んでください。')
@@ -1891,7 +2018,7 @@ function render(){
         msg += t.desc[LANG] + (LANG==='ja' ? '　対象マスを選んでください。' : ' Choose a target cell.');
       }
       statusEl.innerHTML = msg;
-      if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap){
+      if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true){
         if(canAct()) mindReadSkipBtn.style.display = 'inline-block';
       } else if(canAct()) cancelBtn.style.display = 'inline-block';
     } else if(moves.length===0){
@@ -1949,14 +2076,14 @@ function renderRules(){
     'If you have no legal move you may Pass. The game ends when neither player can move, or the board is full; most stones wins.'
   ];
   const bitRules = LANG==='ja' ? [
-    '各プレイヤーはゲーム開始時に「ビット」を'+STARTING_BITS+'持ちます（使い切りで回復・増加はしません）。',
+    '各プレイヤーは「ビット」を0の状態でゲームを開始します。黒のターンが来るたび（＝各巡の開始時）に、黒・白の両方がそれぞれ'+BIT_ROUND_INCOME+'ビットを獲得します。ビットは最大'+BIT_CAP+'までしか持てません（それを超える分は切り捨てられます）。',
     '初期配置が崩れる前の事故を防ぐため、対局開始から'+SKILL_LOCK_TURNS+'ターン（黒・白それぞれの初手）はスキルカードを使用できません。'+(SKILL_LOCK_TURNS+1)+'ターン目から解禁されます。',
     '各ターンの終わりに、自分の手札（最大5枚）へ共用デッキから自動で1枚ドローします。ただし白（後攻）の1巡目のみ、対抗策を整えやすいよう2枚ドローします。',
     '石を置く前に、手札から1枚だけ選んで使用できます（使わなくてもOK）。カードにはそれぞれ消費ビットがあり、所持ビットが足りないカードは使用できません。使用後、通常通り石を置きます。',
     'スキルを使う前（スキルフェーズの前）に、1ターン1回まで「🔁 リドロー」を使えます。ビットを'+REDRAW_COST+'消費して手札を1枚選んで使用済みスキルカード置き場に捨て、その場で新しく1枚ドローします。',
     '使用したスキルカードは画面上部の「使用済みスキルカード置き場」に公開の状態で積まれていきます。共用デッキが尽きるとこの置き場がシャッフルされ、新しい山札として再利用されます。'
   ] : [
-    'Each player starts with '+STARTING_BITS+' Bits (a one-time resource that never regenerates).',
+    'Each player starts the game with 0 Bits. Whenever Black\u2019s turn begins (i.e. at the start of each round), both Black and White gain '+BIT_ROUND_INCOME+' Bits. Bits are capped at '+BIT_CAP+' (any amount above the cap is lost).',
     'To prevent early-game accidents, skill cards are locked for the first '+SKILL_LOCK_TURNS+' turns (Black\u2019s and White\u2019s opening moves). They unlock from turn '+(SKILL_LOCK_TURNS+1)+'.',
     'At the end of each turn you automatically draw 1 card from the shared deck into your hand (max 5). Exception: at the end of White\u2019s (second player) very first turn, White draws 2 cards instead of 1, to help build up counter-play options.',
     'Before placing a stone you may use one card from your hand (optional). Each card costs Bits; you can\u2019t use a card you can\u2019t afford. After using it, place a stone as usual.',
@@ -2046,20 +2173,77 @@ async function waitForFirebase(){
   return await window.psyFirebase.ready();
 }
 function generateRoomCode(){ const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<5;i++) s+=chars[Math.floor(Math.random()*chars.length)]; return s; }
-function serializeState(seq){ return {seq,board,current,hands,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,lastMindRead,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined}; }
+function colorKeyOf(p){ return p===1 ? 'black' : 'white'; }
+function opponentOf(p){ return 3-p; }
+
+function serializeState(seq){
+  handCounts[1] = hands[1] ? hands[1].length : handCounts[1];
+  handCounts[2] = hands[2] ? hands[2].length : handCounts[2];
+  if(myPlayerNumber) handCounts[myPlayerNumber] = hands[myPlayerNumber].length;
+  // NOTE: lastMindRead is intentionally NOT included here. Online, it's
+  // requester-only information learned via the mindReadOp handshake, not
+  // public game state - syncing it would let a later unrelated push from
+  // either side clobber the requester's own freshly-learned reveal.
+  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp};
+}
 function applyRemoteState(data){
-  board=data.board; current=data.current; hands=data.hands; deck=data.deck; discard=data.discard; protectedCells=data.protectedCells||{}; boundCells=data.boundCells||{}; bits=data.bits; placementsLeft=data.placementsLeft; cardUsesLeft=data.cardUsesLeft; doubleTapCostCap=data.doubleTapCostCap; freeDropActive=data.freeDropActive; lastMindRead=data.lastMindRead; passStreak=data.passStreak; turnNumber=data.turnNumber; gameOver=data.gameOver; idSeed=data.idSeed; redrawUsedThisTurn=!!data.redrawUsedThisTurn; onlineJoined=data.joined||onlineJoined; onlineWaitingForOpponent=!(onlineJoined[1]&&onlineJoined[2]); onlineLastAppliedSeq=data.seq||0; pendingCard=null; redrawPending=false;
+  hands = hands || {1:[], 2:[]};
+  handRevealed = handRevealed || {1:false, 2:false};
+  // Preserve an in-flight mindRead handshake on THIS client (the requester)
+  // across incoming updates - otherwise the opponent's legitimate reveal/
+  // swap-done response would wipe the very pendingCard tracking it.
+  const keepPendingCard = pendingCard;
+  const keepLastMindRead = lastMindRead;
+  const preserveMindReadState = !!(pendingCard && pendingCard.card && pendingCard.card.type==='mindRead'
+    && pendingCard.mindReadOpId && data.mindReadOp && data.mindReadOp.id===pendingCard.mindReadOpId);
+  board=data.board; current=data.current; deck=data.deck; discard=data.discard; protectedCells=data.protectedCells||{}; boundCells=data.boundCells||{}; bits=data.bits; placementsLeft=data.placementsLeft; cardUsesLeft=data.cardUsesLeft; doubleTapCostCap=data.doubleTapCostCap; freeDropActive=data.freeDropActive; passStreak=data.passStreak; turnNumber=data.turnNumber; gameOver=data.gameOver; idSeed=data.idSeed; redrawUsedThisTurn=!!data.redrawUsedThisTurn; onlineJoined=data.joined||onlineJoined; onlineWaitingForOpponent=!(onlineJoined[1]&&onlineJoined[2]); onlineLastAppliedSeq=data.seq||0; redrawPending=false;
+  pendingCard = preserveMindReadState ? keepPendingCard : null;
+  lastMindRead = preserveMindReadState ? keepLastMindRead : null;
+  handCounts = data.handCounts || handCounts;
+  mindReadOp = data.mindReadOp || null;
+  if(myPlayerNumber){
+    const opp = opponentOf(myPlayerNumber);
+    const n = (handCounts && handCounts[opp]) || 0;
+    hands[opp] = Array.from({length:n}, (_,i)=>({id:'hidden-'+opp+'-'+i, type:'__hidden__'}));
+    handCounts[myPlayerNumber] = hands[myPlayerNumber] ? hands[myPlayerNumber].length : handCounts[myPlayerNumber];
+  }
+}
+async function pushMyHand(){
+  if(!onlineMode || !onlineRoomCode || !myPlayerNumber || !window.psyFirebase) return;
+  handCounts[myPlayerNumber] = hands[myPlayerNumber].length;
+  try{ await window.psyFirebase.pushHand(onlineRoomCode, colorKeyOf(myPlayerNumber), hands[myPlayerNumber]); }
+  catch(e){ console.error('hand push error', e); }
 }
 async function pushOnlineState(){
   if(!onlineRoomCode||!window.psyFirebase) return;
-  try{ const seq=onlineLastAppliedSeq+1; const state=serializeState(seq); const ok=await window.psyFirebase.pushState(onlineRoomCode,state,myPlayerNumber); if(ok) onlineLastAppliedSeq=state.seq; }catch(e){ console.error('online push error',e); }
+  const seq=onlineLastAppliedSeq+1;
+  const prevSeq=onlineLastAppliedSeq;
+  // Bump the local seq BEFORE awaiting the write. Firebase's onValue listener
+  // fires for our OWN writes too (an "echo"), often before this await resolves.
+  // If we bumped seq only after the await, that echo would look "newer" than
+  // what we've applied and applyRemoteState() would stomp on in-progress local
+  // state (e.g. a pendingCard mid-handshake) with a copy of what we just sent.
+  onlineLastAppliedSeq=seq;
+  try{
+    const state=serializeState(seq);
+    const ok=await window.psyFirebase.pushState(onlineRoomCode,state,myPlayerNumber);
+    if(!ok){ onlineLastAppliedSeq=prevSeq; console.error('pushState rejected'); }
+  }catch(e){ onlineLastAppliedSeq=prevSeq; console.error('online push error',e); }
+  await pushMyHand();
 }
 function startPolling(){
   stopPolling();
   if(!window.psyFirebase||!onlineRoomCode) return;
   window.psyFirebase.listen(onlineRoomCode, room=>{
     if(!room||!room.state) return; const data=room.state;
-    if((data.seq||0)>onlineLastAppliedSeq){ const wasWaiting=onlineWaitingForOpponent; applyRemoteState(data); if(wasWaiting&&!onlineWaitingForOpponent) hideWaitingOverlay(); updateOnlineInfoBar(); render(); }
+    if((data.seq||0)>onlineLastAppliedSeq){
+      const wasWaiting=onlineWaitingForOpponent;
+      applyRemoteState(data);
+      if(wasWaiting&&!onlineWaitingForOpponent) hideWaitingOverlay();
+      updateOnlineInfoBar();
+      render();
+      processIncomingMindReadOp();
+    }
   });
 }
 function stopPolling(){ if(window.psyFirebase) window.psyFirebase.unlisten(); if(onlinePollTimer){clearInterval(onlinePollTimer);onlinePollTimer=null;} }
@@ -2076,10 +2260,16 @@ async function createRoom(){
 
     onlineRoomCode=code; myPlayerNumber=1; onlineMode=true;
     onlineJoined={1:true,2:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0;
+    mindReadOp=null; mindReadProcessedIds=new Set();
     initGame();
+    handCounts = {1:hands[1].length, 2:hands[2].length};
+    const blackHand = hands[1];
+    const whiteHand = hands[2];
     const state=serializeState(1);
-    await window.psyFirebase.createRoom(code,state);
+    await window.psyFirebase.createRoom(code,state,blackHand,whiteHand);
     onlineLastAppliedSeq=1;
+    // ホスト自身のランタイムからもゲスト(白)の手札の実データを破棄し、以後は枚数だけを保持する
+    hands[2] = Array.from({length:whiteHand.length}, (_,i)=>({id:'hidden-2-'+i, type:'__hidden__'}));
     showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
   }catch(e){
     console.error('createRoom failed',e);
@@ -2119,7 +2309,10 @@ async function joinRoom(){
 
     const room=result.room;
     onlineRoomCode=code; myPlayerNumber=2; onlineMode=true;
+    mindReadOp=null; mindReadProcessedIds=new Set();
     applyRemoteState(room.state);
+    hands[2] = (room.hands && room.hands.white) ? room.hands.white : [];
+    handCounts[2] = hands[2].length;
     onlineWaitingForOpponent=false;
     showGameScreen(); updateOnlineInfoBar(); render(); startPolling();
   }catch(e){
@@ -2137,6 +2330,7 @@ async function leaveRoom(){
   stopPolling();
   onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
   onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
+  mindReadOp=null; mindReadProcessedIds=new Set(); handCounts={1:0,2:0};
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
   document.getElementById('overlay').classList.remove('show');
@@ -2228,8 +2422,8 @@ document.getElementById('confirmBtn').addEventListener('click', confirmPendingCa
 document.getElementById('passBtn').addEventListener('click', doPass);
 document.getElementById('restartBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
 document.getElementById('playAgainBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
-document.getElementById('revealBtn1').addEventListener('click', ()=>{ handRevealed[1] = !handRevealed[1]; render(); });
-document.getElementById('revealBtn2').addEventListener('click', ()=>{ handRevealed[2] = !handRevealed[2]; render(); });
+document.getElementById('revealBtn1').addEventListener('click', ()=>{ if(onlineMode && myPlayerNumber!==1) return; handRevealed[1] = !handRevealed[1]; render(); });
+document.getElementById('revealBtn2').addEventListener('click', ()=>{ if(onlineMode && myPlayerNumber!==2) return; handRevealed[2] = !handRevealed[2]; render(); });
 document.getElementById('mindReadCloseBtn').addEventListener('click', ()=>{ lastMindRead = null; render(); });
 document.getElementById('modeRowBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='row'; render(); } });
 document.getElementById('modeColBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='col'; render(); } });
