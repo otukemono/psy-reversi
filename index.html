@@ -1023,7 +1023,7 @@ const CARD_TYPES = {
   lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える（空マスはそのまま／連鎖なし）',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty; no chain reaction).'},cost:11,count:1},
   dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える（連鎖なし）',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both (no chain reaction).'},cost:16,count:1},
   doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2},
-  counterShift:{name:{ja:'カウンターシフト',en:'Counter Shift'},icon:'🔃',desc:{ja:'直前に相手が使用した盤面操作系スキル（スライドシフト・リバースシフト・スワップシフト・ツーリバース）の効果を打ち消し、変化したマスを元の状態に戻す（連鎖なし）',en:"Cancels the opponent's most recent board-manipulation skill (Slide Shift, Reverse Shift, Swap Shift, or Two Reverse), restoring the affected cells to how they were before it (no chain reaction)."},cost:6,count:4}
+  counterShift:{name:{ja:'カウンターシフト',en:'Counter Shift'},icon:'🔃',desc:{ja:'相手が直前のターンに使用した盤面操作系スキル（スライドシフト・リバースシフト・スワップシフト・ツーリバース）の効果を打ち消す。以降の展開で変化していないマスだけを元の状態に戻す（相手の次のターンまでの期間限定・連鎖なし）',en:"Cancels the opponent's board-manipulation skill (Slide Shift, Reverse Shift, Swap Shift, or Two Reverse) from their immediately preceding turn, restoring only the cells that haven't changed since (usable only during the opponent's very next turn; no chain reaction)."},cost:6,count:4}
 };
 const LINE_DOMINATION_TYPES = ['lineDomination','dualLineDomination'];
 const MULTI_CELL_PICK_TYPES = {doubleBind: 2};
@@ -1316,6 +1316,9 @@ function endTurn(){
   current = 3-current;
   turnNumber += 1;
   if(current === 1) grantRoundBits();
+  if(lastBoardManipEffect && turnNumber > lastBoardManipEffect.castOnTurn + 1){
+    lastBoardManipEffect = null;
+  }
   Object.keys(protectedCells).forEach(k=>{
     if(protectedCells[k].caster === current) delete protectedCells[k];
   });
@@ -1492,13 +1495,18 @@ function confirmPendingCard(){
 }
 
 function canUseCounterShift(){
-  return !!(lastBoardManipEffect && lastBoardManipEffect.caster !== current);
+  return !!(lastBoardManipEffect && lastBoardManipEffect.caster !== current && turnNumber === lastBoardManipEffect.castOnTurn + 1);
 }
 
 function applyCounterShift(){
   if(!pendingCard || pendingCard.card.type!=='counterShift' || !lastBoardManipEffect) return;
-  lastBoardManipEffect.cells.forEach(({r,c,before})=>{
-    if(!protectedCells[cellKey(r,c)]) board[r][c] = before;
+  // Only revert a cell if nothing has touched it since the skill fired
+  // (its value still matches what the skill produced). Cells that were
+  // legitimately changed afterward - e.g. a normal capture during the
+  // caster's own placement that same turn - are left untouched, so this
+  // undoes only the skill's own contribution, never later game events.
+  lastBoardManipEffect.cells.forEach(({r,c,before,after})=>{
+    if(!protectedCells[cellKey(r,c)] && board[r][c]===after) board[r][c] = before;
   });
   lastBoardManipEffect = null;
   consumeCard();
@@ -1709,7 +1717,7 @@ function handleCardTarget(r,c){
     if(board[r][c]===0 || protectedCells[key]) return;
     const before = board[r][c];
     board[r][c] = board[r][c]===1?2:1;
-    lastBoardManipEffect = {caster:current, sourceType:'reverse', cells:[{r,c,before}]};
+    lastBoardManipEffect = {caster:current, sourceType:'reverse', castOnTurn:turnNumber, cells:[{r,c,before,after:board[r][c]}]};
     consumeCard();
   } else if(type==='block'){
     if(board[r][c]===0 || protectedCells[key]) return;
@@ -1731,7 +1739,7 @@ function handleCardTarget(r,c){
       board[fr][fc] = 0;
       const oldKey = cellKey(fr,fc);
       if(protectedCells[oldKey]){ protectedCells[key]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
-      lastBoardManipEffect = {caster:current, sourceType:'slide', cells:[{r:fr,c:fc,before:movingBefore},{r,c,before:0}]};
+      lastBoardManipEffect = {caster:current, sourceType:'slide', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:movingBefore,after:0},{r,c,before:0,after:movingBefore}]};
       consumeCard();
     }
   } else if(type==='bind'){
@@ -1756,7 +1764,7 @@ function handleCardTarget(r,c){
       const destBefore = board[r][c];
       board[fr][fc] = board[r][c];
       board[r][c] = tmp;
-      lastBoardManipEffect = {caster:current, sourceType:'swap', cells:[{r:fr,c:fc,before:tmp},{r,c,before:destBefore}]};
+      lastBoardManipEffect = {caster:current, sourceType:'swap', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:tmp,after:destBefore},{r,c,before:destBefore,after:tmp}]};
       consumeCard();
     }
   } else if(type==='triReverse'){
@@ -1829,11 +1837,12 @@ function applyTrioEffect(){
     cells.forEach(({r,c})=>{
       const k = cellKey(r,c);
       if(board[r][c]!==0 && !protectedCells[k]){
-        flippedCells.push({r,c,before:board[r][c]});
+        const before = board[r][c];
         board[r][c] = board[r][c]===1?2:1;
+        flippedCells.push({r,c,before,after:board[r][c]});
       }
     });
-    if(flippedCells.length>0) lastBoardManipEffect = {caster:current, sourceType:'triReverse', cells:flippedCells};
+    if(flippedCells.length>0) lastBoardManipEffect = {caster:current, sourceType:'triReverse', castOnTurn:turnNumber, cells:flippedCells};
   } else if(type==='triBlock'){
     cells.forEach(({r,c})=>{
       protectedCells[cellKey(r,c)] = {caster:current};
@@ -1977,7 +1986,7 @@ function render(){
         if(pendingCard.picks.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
       }
       if(pendingCard && pendingCard.card.type==='counterShift' && lastBoardManipEffect){
-        if(lastBoardManipEffect.cells.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
+        if(lastBoardManipEffect.cells.some(cell=>cell.r===r && cell.c===c && board[cell.r][cell.c]===cell.after)) div.classList.add('trio-preview');
       }
       if(!pendingCard && moveSet.has(key) && !gameOver && canAct()) div.classList.add('clickable');
 
@@ -2271,11 +2280,17 @@ function render(){
       } else if(pendingCard.card.type==='mindRead'){
         msg += LANG==='ja' ? '相手の手札を1枚（裏向きのまま）選んでください。開示後、自分の手札と交換するか選べます。' : 'Choose one of the opponent\u2019s (face-down) cards to reveal. Afterwards you may choose to swap it with one of your own.';
       } else if(pendingCard.card.type==='counterShift'){
-        const cellCount = lastBoardManipEffect ? lastBoardManipEffect.cells.length : 0;
+        const cellCount = lastBoardManipEffect ? lastBoardManipEffect.cells.filter(cell=>board[cell.r][cell.c]===cell.after).length : 0;
         const targetSkill = lastBoardManipEffect ? CARD_TYPES[lastBoardManipEffect.sourceType] : null;
-        msg += LANG==='ja'
-          ? (targetSkill ? '『'+targetSkill.icon+' '+targetSkill.name.ja+'』の効果を打ち消し、金色の枠で囲まれた'+cellCount+'マスを元の状態に戻します。よろしければ「発動する」を押してください。' : '打ち消す対象がありません。')
-          : (targetSkill ? 'Cancels the effect of "'+targetSkill.icon+' '+targetSkill.name.en+'," restoring the '+cellCount+' highlighted cell(s). Press "Activate" when ready.' : 'Nothing to cancel.');
+        if(targetSkill && cellCount===0){
+          msg += LANG==='ja'
+            ? '『'+targetSkill.icon+' '+targetSkill.name.ja+'』が変化させたマスは、その後の展開で状態が変わっており、もう復元できません。使わずに「キャンセル」することをおすすめします。'
+            : 'The cells "'+targetSkill.icon+' '+targetSkill.name.en+'" changed have since been altered by other events and can no longer be restored. Consider pressing "Cancel" instead.';
+        } else {
+          msg += LANG==='ja'
+            ? (targetSkill ? '『'+targetSkill.icon+' '+targetSkill.name.ja+'』の効果を打ち消し、金色の枠で囲まれた'+cellCount+'マスを元の状態に戻します。よろしければ「発動する」を押してください。' : '打ち消す対象がありません。')
+            : (targetSkill ? 'Cancels the effect of "'+targetSkill.icon+' '+targetSkill.name.en+'," restoring the '+cellCount+' highlighted cell(s). Press "Activate" when ready.' : 'Nothing to cancel.');
+        }
         confirmBtn.textContent = tr('confirmActivate');
         if(canAct() && lastBoardManipEffect) confirmBtn.style.display = 'inline-block';
       } else if(NO_TARGET_CARDS.includes(pendingCard.card.type)){
