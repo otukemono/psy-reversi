@@ -488,6 +488,18 @@
     animation:banner-in .2s ease;
   }
   .last-turn-banner b{color:var(--gold-soft);}
+  .deck-reshuffle-banner{
+    background:linear-gradient(160deg,#3a2812,#2f1d0d);
+    border:1px solid var(--gold-dim);
+    border-radius:10px;
+    padding:8px 14px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:10px;flex-wrap:wrap;
+    font-size:12.5px;
+    color:var(--gold-soft);
+    margin-bottom:8px;
+    animation:banner-in .2s ease;
+  }
   @keyframes banner-in{
     from{opacity:0;transform:translateY(-6px);}
     to{opacity:1;transform:translateY(0);}
@@ -754,6 +766,11 @@
     <div class="discard-cards" id="discardCards"></div>
   </div>
 
+  <div class="deck-reshuffle-banner" id="deckReshuffleBanner" style="display:none;">
+    <div class="deck-reshuffle-text" id="deckReshuffleText"></div>
+    <button class="btn" id="deckReshuffleCloseBtn">閉じる</button>
+  </div>
+
   <div class="mindread-banner" id="mindReadBanner" style="display:none;">
     <div class="mindread-banner-text" id="mindReadBannerText"></div>
     <button class="btn primary" id="mindReadCloseBtn">閉じる</button>
@@ -1005,7 +1022,8 @@ const CARD_TYPES = {
   recycle:{name:{ja:'リサイクル',en:'Recycle'},icon:'♻️',desc:{ja:'使用済みスキルカード置き場から1枚指定し、その効果を発動する（コストは対象カードのコスト+1。♻️自身は指定不可）',en:'Pick one card from the discard pile and trigger its effect again (cost = that card\u2019s cost + 1; Recycle itself cannot be targeted).'},cost:1,count:3},
   lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える（空マスはそのまま／連鎖なし）',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty; no chain reaction).'},cost:11,count:1},
   dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える（連鎖なし）',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both (no chain reaction).'},cost:16,count:1},
-  doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2}
+  doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2},
+  counterShift:{name:{ja:'カウンターシフト',en:'Counter Shift'},icon:'🔃',desc:{ja:'直前に相手が使用した盤面操作系スキル（スライドシフト・リバースシフト・スワップシフト・ツーリバース）の効果を打ち消し、変化したマスを元の状態に戻す（連鎖なし）',en:"Cancels the opponent's most recent board-manipulation skill (Slide Shift, Reverse Shift, Swap Shift, or Two Reverse), restoring the affected cells to how they were before it (no chain reaction)."},cost:6,count:4}
 };
 const LINE_DOMINATION_TYPES = ['lineDomination','dualLineDomination'];
 const MULTI_CELL_PICK_TYPES = {doubleBind: 2};
@@ -1123,7 +1141,7 @@ const STR = {
 };
 function tr(key){ return STR[LANG][key]; }
 
-let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog;
+let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog, deckReshuffleNotice, lastBoardManipEffect;
 
 function logAction(entry){
   turnActionLog = turnActionLog || [];
@@ -1188,6 +1206,7 @@ function drawCard(player){
     if(discard.length === 0) return false;
     deck = shuffle(discard);
     discard = [];
+    deckReshuffleNotice = true;
   }
   const card = deck.pop();
   hands[player].push(card);
@@ -1209,6 +1228,8 @@ function initGame(){
   gameOver = false;
   turnActionLog = [];
   lastTurnLog = null;
+  deckReshuffleNotice = false;
+  lastBoardManipEffect = null;
   bits = {1:STARTING_BITS, 2:STARTING_BITS};
   placementsLeft = 1;
   handRevealed = onlineMode ? {1: myPlayerNumber===1, 2: myPlayerNumber===2} : {1:false, 2:false};
@@ -1374,6 +1395,7 @@ function isRecycleEligible(targetCard){
   const cost = recycleCost(targetCard.type);
   if(bits[current] < cost) return false;
   if(doubleTapCostCap !== null && cost > doubleTapCostCap) return false;
+  if(targetCard.type === 'counterShift' && !canUseCounterShift()) return false;
   return true;
 }
 
@@ -1392,6 +1414,7 @@ function selectCard(cardId){
     const eligible = discard.some(d=>isRecycleEligible(d));
     if(!eligible) return;
   }
+  if(card.type === 'counterShift' && !canUseCounterShift()) return;
   pendingCard = {card, step:0, first:null};
   if(LINE_DOMINATION_TYPES.includes(card.type)){
     pendingCard.mode = 'row';
@@ -1450,6 +1473,10 @@ function confirmPendingCard(){
   if(!canAct()) return;
   if(!pendingCard) return;
   const type = pendingCard.card.type;
+  if(type==='counterShift'){
+    applyCounterShift();
+    return;
+  }
   if(NO_TARGET_CARDS.includes(type)){ consumeCard(); return; }
   if((type==='triReverse' || type==='triBlock') && pendingCard.step===2){
     applyTrioEffect();
@@ -1462,6 +1489,19 @@ function confirmPendingCard(){
   if(MULTI_CELL_PICK_TYPES[type] && pendingCard.ready){
     applyDoubleBind();
   }
+}
+
+function canUseCounterShift(){
+  return !!(lastBoardManipEffect && lastBoardManipEffect.caster !== current);
+}
+
+function applyCounterShift(){
+  if(!pendingCard || pendingCard.card.type!=='counterShift' || !lastBoardManipEffect) return;
+  lastBoardManipEffect.cells.forEach(({r,c,before})=>{
+    if(!protectedCells[cellKey(r,c)]) board[r][c] = before;
+  });
+  lastBoardManipEffect = null;
+  consumeCard();
 }
 
 function handleMindReadTarget(opponentIndex){
@@ -1667,7 +1707,9 @@ function handleCardTarget(r,c){
   const key = cellKey(r,c);
   if(type==='reverse'){
     if(board[r][c]===0 || protectedCells[key]) return;
+    const before = board[r][c];
     board[r][c] = board[r][c]===1?2:1;
+    lastBoardManipEffect = {caster:current, sourceType:'reverse', cells:[{r,c,before}]};
     consumeCard();
   } else if(type==='block'){
     if(board[r][c]===0 || protectedCells[key]) return;
@@ -1684,10 +1726,12 @@ function handleCardTarget(r,c){
       const dr=Math.abs(r-fr), dc=Math.abs(c-fc);
       const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
       if(!adjacent || board[r][c]!==0 || boundCells[key]) return;
+      const movingBefore = board[fr][fc];
       board[r][c] = board[fr][fc];
       board[fr][fc] = 0;
       const oldKey = cellKey(fr,fc);
       if(protectedCells[oldKey]){ protectedCells[key]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
+      lastBoardManipEffect = {caster:current, sourceType:'slide', cells:[{r:fr,c:fc,before:movingBefore},{r,c,before:0}]};
       consumeCard();
     }
   } else if(type==='bind'){
@@ -1709,8 +1753,10 @@ function handleCardTarget(r,c){
       if(board[r][c]===0 || protectedCells[key]) return;
       if(board[r][c]===pendingCard.firstColor) return;
       const tmp = board[fr][fc];
+      const destBefore = board[r][c];
       board[fr][fc] = board[r][c];
       board[r][c] = tmp;
+      lastBoardManipEffect = {caster:current, sourceType:'swap', cells:[{r:fr,c:fc,before:tmp},{r,c,before:destBefore}]};
       consumeCard();
     }
   } else if(type==='triReverse'){
@@ -1779,12 +1825,15 @@ function applyTrioEffect(){
     ? [pendingCard.first, pendingCard.second]
     : [pendingCard.first, pendingCard.second, pendingCard.third];
   if(type==='triReverse'){
+    const flippedCells = [];
     cells.forEach(({r,c})=>{
       const k = cellKey(r,c);
       if(board[r][c]!==0 && !protectedCells[k]){
+        flippedCells.push({r,c,before:board[r][c]});
         board[r][c] = board[r][c]===1?2:1;
       }
     });
+    if(flippedCells.length>0) lastBoardManipEffect = {caster:current, sourceType:'triReverse', cells:flippedCells};
   } else if(type==='triBlock'){
     cells.forEach(({r,c})=>{
       protectedCells[cellKey(r,c)] = {caster:current};
@@ -1927,6 +1976,9 @@ function render(){
       if(pendingCard && MULTI_CELL_PICK_TYPES[pendingCard.card.type] && pendingCard.picks && pendingCard.picks.length>0){
         if(pendingCard.picks.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
       }
+      if(pendingCard && pendingCard.card.type==='counterShift' && lastBoardManipEffect){
+        if(lastBoardManipEffect.cells.some(cell=>cell.r===r && cell.c===c)) div.classList.add('trio-preview');
+      }
       if(!pendingCard && moveSet.has(key) && !gameOver && canAct()) div.classList.add('clickable');
 
       if(board[r][c]!==0){
@@ -1994,6 +2046,9 @@ function render(){
             const eligible = discard.some(d=>isRecycleEligible(d));
             if(!eligible) disabled = true;
           }
+        }
+        if(card.type === 'counterShift' && p===current && turnOk && !overCap && !canUseCounterShift()){
+          disabled = true;
         }
         el.className = 'card type-'+card.type + (disabled?' disabled':'') + (pendingCard && pendingCard.card.id===card.id ? ' selected':'');
         el.innerHTML = '<div class="cost">'+costLabel+'</div><div class="icon">'+t.icon+'</div><div class="name">'+t.name[LANG]+'</div>';
@@ -2094,6 +2149,17 @@ function render(){
     lastTurnEl.innerHTML = (LANG==='ja' ? '⏮️ 前のターン（<b>'+label+'</b>）：' : '⏮️ Previous turn (<b>'+label+'</b>): ')+descs;
   } else {
     lastTurnEl.style.display = 'none';
+  }
+
+  // deck reshuffle notice
+  const reshuffleEl = document.getElementById('deckReshuffleBanner');
+  if(deckReshuffleNotice){
+    reshuffleEl.style.display = 'flex';
+    document.getElementById('deckReshuffleText').textContent = LANG==='ja'
+      ? '🔄 共用デッキが尽きたため、使用済みスキルカード置き場をシャッフルして新しい山札にしました。'
+      : '🔄 The shared deck ran out, so the used-card pile was shuffled into a new deck.';
+  } else {
+    reshuffleEl.style.display = 'none';
   }
 
   // status
@@ -2204,6 +2270,14 @@ function render(){
           : (revealedType ? 'The opponent\u2019s card is "'+revealedType.icon+' '+revealedType.name[LANG]+'." Choose one of your own cards to swap with it, or press "Skip" to decline.' : 'Choose one of your own cards to swap, or skip.');
       } else if(pendingCard.card.type==='mindRead'){
         msg += LANG==='ja' ? '相手の手札を1枚（裏向きのまま）選んでください。開示後、自分の手札と交換するか選べます。' : 'Choose one of the opponent\u2019s (face-down) cards to reveal. Afterwards you may choose to swap it with one of your own.';
+      } else if(pendingCard.card.type==='counterShift'){
+        const cellCount = lastBoardManipEffect ? lastBoardManipEffect.cells.length : 0;
+        const targetSkill = lastBoardManipEffect ? CARD_TYPES[lastBoardManipEffect.sourceType] : null;
+        msg += LANG==='ja'
+          ? (targetSkill ? '『'+targetSkill.icon+' '+targetSkill.name.ja+'』の効果を打ち消し、金色の枠で囲まれた'+cellCount+'マスを元の状態に戻します。よろしければ「発動する」を押してください。' : '打ち消す対象がありません。')
+          : (targetSkill ? 'Cancels the effect of "'+targetSkill.icon+' '+targetSkill.name.en+'," restoring the '+cellCount+' highlighted cell(s). Press "Activate" when ready.' : 'Nothing to cancel.');
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct() && lastBoardManipEffect) confirmBtn.style.display = 'inline-block';
       } else if(NO_TARGET_CARDS.includes(pendingCard.card.type)){
         msg += LANG==='ja' ? '対象マスの指定は不要です。よろしければ「発動する」を押してください。' : 'No target needed \u2014 press "Activate" when ready.';
         confirmBtn.textContent = tr('confirmActivate');
@@ -2287,19 +2361,19 @@ function renderRules(){
   const categories = LANG==='ja' ? [
     {icon:'🔎', label:'情報系', types:['mindRead']},
     {icon:'🧩', label:'補助系', types:['doubleTap','recycle']},
-    {icon:'🛡️', label:'妨害・防御系', types:['bind','doubleBind','block','triBlock']},
+    {icon:'🛡️', label:'妨害・防御系', types:['bind','doubleBind','block','triBlock','counterShift']},
     {icon:'🔄', label:'盤面操作系', types:['slide','reverse','swap','triReverse']},
     {icon:'📍', label:'配置系', types:['twoDrop','freeDrop']},
     {icon:'👑', label:'制圧系', types:['lineDomination','dualLineDomination']}
   ] : [
     {icon:'🔎', label:'Information', types:['mindRead']},
     {icon:'🧩', label:'Support', types:['doubleTap','recycle']},
-    {icon:'🛡️', label:'Disruption & Defense', types:['bind','doubleBind','block','triBlock']},
+    {icon:'🛡️', label:'Disruption & Defense', types:['bind','doubleBind','block','triBlock','counterShift']},
     {icon:'🔄', label:'Board Manipulation', types:['slide','reverse','swap','triReverse']},
     {icon:'📍', label:'Placement', types:['twoDrop','freeDrop']},
     {icon:'👑', label:'Domination', types:['lineDomination','dualLineDomination']}
   ];
-  const catClass = {mindRead:'cat-info', doubleTap:'cat-support', recycle:'cat-support', bind:'cat-defense', doubleBind:'cat-defense', block:'cat-defense', triBlock:'cat-defense', slide:'cat-board', reverse:'cat-board', swap:'cat-board', triReverse:'cat-board', twoDrop:'cat-placement', freeDrop:'cat-placement', lineDomination:'cat-domination', dualLineDomination:'cat-domination'};
+  const catClass = {mindRead:'cat-info', doubleTap:'cat-support', recycle:'cat-support', bind:'cat-defense', doubleBind:'cat-defense', block:'cat-defense', triBlock:'cat-defense', counterShift:'cat-defense', slide:'cat-board', reverse:'cat-board', swap:'cat-board', triReverse:'cat-board', twoDrop:'cat-placement', freeDrop:'cat-placement', lineDomination:'cat-domination', dualLineDomination:'cat-domination'};
 
   let html = '<b style="color:var(--gold-soft)">'+(LANG==='ja'?'基本ルール':'Basic Rules')+'</b><ul>';
   basicRules.forEach(t=>{ html += '<li>'+t+'</li>'; });
@@ -2378,7 +2452,7 @@ function serializeState(seq){
   // requester-only information learned via the mindReadOp handshake, not
   // public game state - syncing it would let a later unrelated push from
   // either side clobber the requester's own freshly-learned reveal.
-  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog};
+  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog,deckReshuffleNotice,lastBoardManipEffect};
 }
 function applyRemoteState(data){
   hands = hands || {1:[], 2:[]};
@@ -2396,6 +2470,8 @@ function applyRemoteState(data){
   handCounts = data.handCounts || handCounts;
   mindReadOp = data.mindReadOp || null;
   lastTurnLog = data.lastTurnLog || null;
+  deckReshuffleNotice = !!data.deckReshuffleNotice;
+  lastBoardManipEffect = data.lastBoardManipEffect || null;
   if(myPlayerNumber){
     const opp = opponentOf(myPlayerNumber);
     const n = (handCounts && handCounts[opp]) || 0;
@@ -2528,6 +2604,7 @@ async function leaveRoom(){
   onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
   mindReadOp=null; mindReadProcessedIds=new Set(); handCounts={1:0,2:0};
   turnActionLog=[]; lastTurnLog=null;
+  deckReshuffleNotice=false; lastBoardManipEffect=null;
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
   document.getElementById('overlay').classList.remove('show');
@@ -2583,6 +2660,7 @@ function applyI18nStatic(){
   document.getElementById('labelCountUnit2').textContent = tr('labelCountUnit');
   document.getElementById('labelDiscard').textContent = tr('labelDiscard');
   document.getElementById('mindReadCloseBtn').textContent = tr('mindReadCloseBtn');
+  document.getElementById('deckReshuffleCloseBtn').textContent = tr('mindReadCloseBtn');
   document.getElementById('modeRowBtn').textContent = tr('modeRowBtn');
   document.getElementById('redrawBtn').textContent = tr('redrawBtn');
   document.getElementById('redrawCancelBtn').textContent = tr('redrawCancelBtn');
@@ -2624,6 +2702,7 @@ document.getElementById('playAgainBtn').addEventListener('click', ()=>{ if(!onli
 document.getElementById('revealBtn1').addEventListener('click', ()=>{ if(onlineMode && myPlayerNumber!==1) return; handRevealed[1] = !handRevealed[1]; render(); });
 document.getElementById('revealBtn2').addEventListener('click', ()=>{ if(onlineMode && myPlayerNumber!==2) return; handRevealed[2] = !handRevealed[2]; render(); });
 document.getElementById('mindReadCloseBtn').addEventListener('click', ()=>{ lastMindRead = null; render(); });
+document.getElementById('deckReshuffleCloseBtn').addEventListener('click', ()=>{ deckReshuffleNotice = false; render(); if(onlineMode) pushOnlineState(); });
 document.getElementById('modeRowBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='row'; render(); } });
 document.getElementById('modeColBtn').addEventListener('click', ()=>{ if(pendingCard && !pendingCard.ready){ pendingCard.mode='col'; render(); } });
 document.getElementById('redrawBtn').addEventListener('click', startRedraw);
