@@ -789,6 +789,7 @@
       <button class="btn primary" id="confirmBtn" style="display:none;">発動する</button>
       <button class="btn danger" id="cancelBtn" style="display:none;">カード選択を取り消す</button>
       <button class="btn" id="passBtn" style="display:none;">パス（配置不可）</button>
+      <button class="btn primary" id="finishBonusBtn" style="display:none;">このままターンを終了する</button>
       <button class="btn" id="restartBtn">最初からやり直す</button>
       <button class="btn" id="leaveRoomInGameBtn" style="display:none;">ルームを退出</button>
     </div>
@@ -1077,6 +1078,7 @@ const STR = {
     confirmActivate:'発動する',
     cancelBtn:'カード選択を取り消す',
     passBtn:'パス（配置不可）',
+    finishBonusBtn:'このままターンを終了する',
     restartBtn:'最初からやり直す',
     leaveRoomBtn:'ルームを退出',
     leaveRoomAfterGameBtn:'ルームを退出してタイトルへ',
@@ -1127,6 +1129,7 @@ const STR = {
     confirmActivate:'Activate',
     cancelBtn:'Cancel Card',
     passBtn:'Pass (no moves)',
+    finishBonusBtn:'End Turn',
     restartBtn:'Restart Game',
     leaveRoomBtn:'Leave Room',
     leaveRoomAfterGameBtn:'Leave Room to Title',
@@ -1301,13 +1304,26 @@ function placeStone(r,c,mv){
   logAction({kind:'place', r, c});
   passStreak = 0;
   placementsLeft -= 1;
-  if(placementsLeft > 0 && getAvailableMoves().length > 0){
+  if(placementsLeft > 0){
+    // A bonus placement (from Two Drop) is still owed. Even if there's no
+    // legal move for it right now, stay on this turn - render() will show a
+    // dedicated "end turn" prompt instead of silently calling endTurn(). The
+    // previous silent auto-end let a local player keep clicking, unaware the
+    // turn had already passed, and accidentally hand the opponent a capture.
     checkGameEnd();
     render();
     if(onlineMode) pushOnlineState();
   } else {
     endTurn();
   }
+}
+
+function finishBonusPlacement(){
+  if(!canAct()) return;
+  if(pendingCard || redrawPending) return;
+  if(placementsLeft <= 0) return;
+  if(getAvailableMoves().length > 0) return;
+  endTurn();
 }
 
 function endTurn(){
@@ -2187,6 +2203,7 @@ function render(){
   const cancelBtn = document.getElementById('cancelBtn');
   const confirmBtn = document.getElementById('confirmBtn');
   const passBtn = document.getElementById('passBtn');
+  const finishBonusBtn = document.getElementById('finishBonusBtn');
   const modeRowBtn = document.getElementById('modeRowBtn');
   const modeColBtn = document.getElementById('modeColBtn');
   const redrawBtn = document.getElementById('redrawBtn');
@@ -2195,6 +2212,7 @@ function render(){
   cancelBtn.style.display = 'none';
   confirmBtn.style.display = 'none';
   passBtn.style.display = 'none';
+  finishBonusBtn.style.display = 'none';
   modeRowBtn.style.display = 'none';
   modeColBtn.style.display = 'none';
   redrawBtn.style.display = 'none';
@@ -2315,6 +2333,12 @@ function render(){
       if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true){
         if(canAct()) mindReadSkipBtn.style.display = 'inline-block';
       } else if(canAct()) cancelBtn.style.display = 'inline-block';
+    } else if(moves.length===0 && placementsLeft>0){
+      statusEl.innerHTML = LANG==='ja'
+        ? '<b>'+turnLabel+'</b>のターン — ⏫ツードロップの2回目に置ける場所がありません。パスの回数にはカウントされず、このままターンを終了できます。'
+        : '<b>'+turnLabel+'</b>\u2019s turn \u2014 ⏫ No legal spot for Two Drop\u2019s second placement. This won\u2019t count as a Pass; you can just end your turn.';
+      if(canAct()) finishBonusBtn.style.display = 'inline-block';
+      if(canRedraw()) redrawBtn.style.display = 'inline-block';
     } else if(moves.length===0){
       statusEl.innerHTML = LANG==='ja'
         ? '<b>'+turnLabel+'</b>のターン — 配置できるマスがありません。カードを使うか、パスしてください。'
@@ -2701,6 +2725,7 @@ function applyI18nStatic(){
   document.getElementById('modeColBtn').textContent = tr('modeColBtn');
   document.getElementById('cancelBtn').textContent = tr('cancelBtn');
   document.getElementById('passBtn').textContent = tr('passBtn');
+  document.getElementById('finishBonusBtn').textContent = tr('finishBonusBtn');
   document.getElementById('restartBtn').textContent = tr('restartBtn');
   document.getElementById('leaveRoomInGameBtn').textContent = tr('leaveRoomBtn');
   document.getElementById('leaveRoomAfterGameBtn').textContent = tr('leaveRoomAfterGameBtn');
@@ -2730,6 +2755,7 @@ function setLang(l){
 document.getElementById('cancelBtn').addEventListener('click', cancelCard);
 document.getElementById('confirmBtn').addEventListener('click', confirmPendingCard);
 document.getElementById('passBtn').addEventListener('click', doPass);
+document.getElementById('finishBonusBtn').addEventListener('click', finishBonusPlacement);
 document.getElementById('restartBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
 document.getElementById('playAgainBtn').addEventListener('click', ()=>{ if(!onlineMode) initGame(); });
 document.getElementById('revealBtn1').addEventListener('click', ()=>{ if(onlineMode && myPlayerNumber!==1) return; handRevealed[1] = !handRevealed[1]; render(); });
