@@ -62,6 +62,15 @@
     color:var(--gold-soft);
     text-shadow:0 0 18px rgba(212,175,55,.25);
   }
+  .version-tag{
+    font-family:'Noto Sans JP',sans-serif;
+    font-size:11px;
+    font-weight:400;
+    letter-spacing:0;
+    color:var(--text-dim);
+    text-shadow:none;
+    vertical-align:middle;
+  }
   .subtitle{
     text-align:center;
     color:var(--text-dim);
@@ -171,13 +180,50 @@
     margin-bottom:6px;gap:8px;flex-wrap:wrap;
   }
   .top-bar-left{display:flex;align-items:center;gap:10px;}
-.deck-row{
+.top-info-row{
     display:flex;
-    align-items:stretch;
+    align-items:center;
     justify-content:center;
-    gap:10px;
-    margin-bottom:14px;
+    gap:12px;
+    margin-bottom:10px;
     flex-wrap:wrap;
+  }
+  .turn-indicator{
+    display:flex;align-items:center;gap:8px;
+    background:linear-gradient(160deg,var(--panel),var(--panel-2));
+    border:1px solid var(--panel-line);
+    border-radius:20px;
+    padding:8px 20px;
+    font-family:'Shippori Mincho',serif;
+    font-weight:700;
+    font-size:14px;
+    color:var(--gold-soft);
+    transition:border-color .25s, box-shadow .25s;
+  }
+  .turn-indicator.pulsing{
+    border-color:var(--gold);
+    box-shadow:0 0 16px rgba(212,175,55,.3);
+  }
+  .board-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    gap:14px;
+    margin:6px 0 14px;
+    flex-wrap:wrap;
+  }
+  .board-row .hand-panel{
+    flex:0 1 220px;
+    width:220px;
+    max-width:220px;
+  }
+  .board-row .board-area{
+    margin:0;
+    flex:0 0 auto;
+  }
+  @media (max-width:820px){
+    .board-row{ flex-direction:column; align-items:center; }
+    .board-row .hand-panel{ width:100%; max-width:480px; flex-basis:auto; }
   }
 
   .hand-panel{
@@ -410,6 +456,17 @@
     box-shadow:0 0 24px rgba(212,175,55,.35);
     animation:banner-in .25s ease;
   }
+  .last-turn-banner{
+    background:rgba(0,0,0,.2);
+    border:1px solid var(--panel-line);
+    border-radius:10px;
+    padding:7px 14px;
+    font-size:12px;
+    color:var(--text-dim);
+    margin-bottom:8px;
+    animation:banner-in .2s ease;
+  }
+  .last-turn-banner b{color:var(--gold-soft);}
   @keyframes banner-in{
     from{opacity:0;transform:translateY(-6px);}
     to{opacity:1;transform:translateY(0);}
@@ -654,29 +711,15 @@
     <span id="onlineInfoText"></span>
   </div>
 
-  <div class="deck-row">
-    <div class="hand-panel" id="handPanel1">
-      <div class="hand-head">
-        <div class="hand-title"><span class="stone-dot b"></span><span id="labelBlackPlayer">黒プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">0</span></div>
-      </div>
-      <button class="btn reveal-btn" id="revealBtn1">🔍 <span id="revealBtn1Label">自分の手札を見る</span></button>
-      <div class="hand-cards" id="hand1"></div>
+  <div class="top-info-row">
+    <div class="turn-indicator" id="turnIndicator">
+      <span class="stone-dot b" id="turnIndicatorDot"></span>
+      <span id="turnIndicatorText">黒のターン</span>
     </div>
-
     <div class="deck-panel">
       <div class="deck-stack">🂠</div>
       <div class="deck-label" id="labelDeck">共用デッキ</div>
       <div class="deck-count"><span id="deckCount">0</span><span id="labelCountUnit1">枚</span></div>
-    </div>
-
-    <div class="hand-panel" id="handPanel2">
-      <div class="hand-head">
-        <div class="hand-title"><span class="stone-dot w"></span><span id="labelWhitePlayer">白プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">0</span></div>
-      </div>
-      <button class="btn reveal-btn" id="revealBtn2">🔍 <span id="revealBtn2Label">自分の手札を見る</span></button>
-      <div class="hand-cards" id="hand2"></div>
     </div>
   </div>
 
@@ -688,13 +731,35 @@
     <div class="discard-cards" id="discardCards"></div>
   </div>
 
-  <div class="board-area">
-    <div class="board" id="board"></div>
-  </div>
-
   <div class="mindread-banner" id="mindReadBanner" style="display:none;">
     <div class="mindread-banner-text" id="mindReadBannerText"></div>
     <button class="btn primary" id="mindReadCloseBtn">閉じる</button>
+  </div>
+
+  <div class="last-turn-banner" id="lastTurnBanner" style="display:none;"></div>
+
+  <div class="board-row">
+    <div class="hand-panel" id="handPanel1">
+      <div class="hand-head">
+        <div class="hand-title"><span class="stone-dot b"></span><span id="labelBlackPlayer">黒プレイヤー</span></div>
+        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">0</span></div>
+      </div>
+      <button class="btn reveal-btn" id="revealBtn1">🔍 <span id="revealBtn1Label">自分の手札を見る</span></button>
+      <div class="hand-cards" id="hand1"></div>
+    </div>
+
+    <div class="board-area">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="hand-panel" id="handPanel2">
+      <div class="hand-head">
+        <div class="hand-title"><span class="stone-dot w"></span><span id="labelWhitePlayer">白プレイヤー</span></div>
+        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">0</span></div>
+      </div>
+      <button class="btn reveal-btn" id="revealBtn2">🔍 <span id="revealBtn2Label">自分の手札を見る</span></button>
+      <div class="hand-cards" id="hand2"></div>
+    </div>
   </div>
 
   <div class="status-bar">
@@ -896,6 +961,7 @@ window.psyFirebase = {
 window.dispatchEvent(new Event('psyFirebaseReady'));
 </script>
 <script>
+const APP_VERSION = 'α0.6';
 const SIZE = 8;
 const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
 
@@ -904,18 +970,18 @@ let LANG = 'ja';
 const CARD_TYPES = {
   reverse:{name:{ja:'リバースシフト',en:'Reverse Shift'},icon:'🔄',desc:{ja:'石を1つ選んでその場で裏返す（連鎖なし）',en:'Pick one stone and flip it in place (no chain reaction).'},cost:5,count:4},
   block:{name:{ja:'ブロック',en:'Block'},icon:'🛡️',desc:{ja:'石を1つ選んで次の自分のターンまで裏返らなくする',en:'Pick one stone; it cannot be flipped until your next turn.'},cost:4,count:3},
-  slide:{name:{ja:'スライドシフト',en:'Slide Shift'},icon:'↔️',desc:{ja:'石を1つ選び、隣接する空マスへ1マス移動',en:'Pick one stone and slide it one square into an adjacent empty cell.'},cost:3,count:4},
-  bind:{name:{ja:'バインド',en:'Bind'},icon:'🔒',desc:{ja:'空マスを1つ選び、次の自分の配置フェーズまで封鎖',en:'Pick one empty cell; nobody can place there until your next placement phase.'},cost:4,count:4},
+  slide:{name:{ja:'スライドシフト',en:'Slide Shift'},icon:'↔️',desc:{ja:'石を1つ選び、隣接する空マスへ1マス移動（連鎖なし）',en:'Pick one stone and slide it one square into an adjacent empty cell (no chain reaction).'},cost:3,count:4},
+  bind:{name:{ja:'バインド',en:'Bind'},icon:'🔒',desc:{ja:'空マスを1つ選び、次の自分の配置フェーズまで封鎖',en:'Pick one empty cell; nobody can place there until your next placement phase.'},cost:4,count:3},
   swap:{name:{ja:'スワップシフト',en:'Swap Shift'},icon:'🔀',desc:{ja:'起点になる石を1つ指定し、隣接する異なる色の石と位置を入れ替える（連鎖なし）',en:'Pick a starting stone, then swap it with an adjacent stone of the opposite color (no chain reaction).'},cost:6,count:4},
   twoDrop:{name:{ja:'ツードロップ',en:'Two Drop'},icon:'⏫',desc:{ja:'このターンだけ石を2枚配置できる',en:'Place two stones this turn instead of one.'},cost:8,count:2},
-  triReverse:{name:{ja:'ツーリバース',en:'Two Reverse'},icon:'🎯',desc:{ja:'縦横斜めの連なる2マスを選び、石を色不問で裏返す',en:'Pick 2 adjacent cells in a line and flip whatever stones are on them, regardless of color.'},cost:6,count:3},
-  mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:2},
+  triReverse:{name:{ja:'ツーリバース',en:'Two Reverse'},icon:'🎯',desc:{ja:'縦横斜めの連なる2マスを選び、石を色不問で裏返す（連鎖なし）',en:'Pick 2 adjacent cells in a line and flip whatever stones are on them, regardless of color (no chain reaction).'},cost:6,count:3},
+  mindRead:{name:{ja:'マインドリード',en:'Mind Read'},icon:'🔮',desc:{ja:'相手の手札を1枚指定して開示させる。任意で自分の手札1枚と交換できる',en:"Pick one of the opponent's hand cards to reveal it. You may then optionally swap it with one of your own hand cards."},cost:3,count:3},
   doubleTap:{name:{ja:'ダブルタップ',en:'Double Tap'},icon:'✌️',desc:{ja:'手札のコスト6以下のスキルを、このターン追加で2枚まで使用できるようにする（各コストは通常通り消費）',en:'This turn, you may use up to 2 additional skill cards costing 6 or less (each still costs its normal amount).'},cost:2,count:3},
   triBlock:{name:{ja:'トライブロック',en:'Tri Block'},icon:'🧱',desc:{ja:'縦横斜めに連続する自分の石3つを、次の自分のターンまで全スキル効果に対して保護する',en:'Pick 3 consecutive stones of your own color in a line; they become immune to all skill effects until your next turn.'},cost:6,count:2},
   freeDrop:{name:{ja:'フリードロップ',en:'Free Drop'},icon:'🌀',desc:{ja:'発動したターンは盤面の好きな空マスに石を置けるようになる',en:'This turn, you may place your stone on any empty cell, ignoring the usual flanking rule.'},cost:8,count:2},
   recycle:{name:{ja:'リサイクル',en:'Recycle'},icon:'♻️',desc:{ja:'使用済みスキルカード置き場から1枚指定し、その効果を発動する（コストは対象カードのコスト+1。♻️自身は指定不可）',en:'Pick one card from the discard pile and trigger its effect again (cost = that card\u2019s cost + 1; Recycle itself cannot be targeted).'},cost:1,count:3},
-  lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty).'},cost:10,count:1},
-  dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both.'},cost:15,count:1},
+  lineDomination:{name:{ja:'ラインドミネーション',en:'Line Domination'},icon:'📏',desc:{ja:'盤面の縦または横1列を指定し、その列上の石をすべて自分の色に変える（空マスはそのまま／連鎖なし）',en:'Pick one full row or column; every stone on it becomes your color (empty cells stay empty; no chain reaction).'},cost:11,count:1},
+  dualLineDomination:{name:{ja:'デュアルラインドミネーション',en:'Dual Line Domination'},icon:'📐',desc:{ja:'盤面の縦または横2列を指定し、その列上の石をすべて自分の色に変える（連鎖なし）',en:'The 2-line version of Line Domination \u2014 pick two rows/columns and convert every stone on both (no chain reaction).'},cost:16,count:1},
   doubleBind:{name:{ja:'ダブルバインド',en:'Double Bind'},icon:'🔗',desc:{ja:'空いているマスを2つ指定し、自分の次の配置フェーズまでどちらも誰も置けなくする',en:'The 2-cell version of Bind \u2014 pick two empty cells and seal both until your next placement phase.'},cost:7,count:2}
 };
 const LINE_DOMINATION_TYPES = ['lineDomination','dualLineDomination'];
@@ -1034,7 +1100,23 @@ const STR = {
 };
 function tr(key){ return STR[LANG][key]; }
 
-let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending;
+let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog;
+
+function logAction(entry){
+  turnActionLog = turnActionLog || [];
+  turnActionLog.push(entry);
+}
+function describeAction(a){
+  if(a.kind==='place') return LANG==='ja' ? '('+(a.c+1)+', '+(a.r+1)+')に配置' : 'Placed at ('+(a.c+1)+', '+(a.r+1)+')';
+  if(a.kind==='card'){
+    const t = CARD_TYPES[a.cardType];
+    if(!t) return '';
+    return LANG==='ja' ? t.icon+' '+t.name.ja+'を使用' : 'Used '+t.icon+' '+t.name.en;
+  }
+  if(a.kind==='redraw') return LANG==='ja' ? '🔁 リドロー' : '🔁 Redraw';
+  if(a.kind==='pass') return LANG==='ja' ? 'パス' : 'Passed';
+  return '';
+}
 
 // ---- online state ----
 let onlineMode = false;        // true when playing an online custom match
@@ -1102,9 +1184,11 @@ function initGame(){
   pendingCard = null;
   cardUsesLeft = 1;
   gameOver = false;
+  turnActionLog = [];
+  lastTurnLog = null;
   bits = {1:STARTING_BITS, 2:STARTING_BITS};
   placementsLeft = 1;
-  handRevealed = {1:false, 2:false};
+  handRevealed = onlineMode ? {1: myPlayerNumber===1, 2: myPlayerNumber===2} : {1:false, 2:false};
   doubleTapCostCap = null;
   freeDropActive = false;
   lastMindRead = null;
@@ -1168,6 +1252,7 @@ function placeStone(r,c,mv){
   mv.flips.forEach(([fr,fc])=>{
     if(!protectedCells[cellKey(fr,fc)]) board[fr][fc] = current;
   });
+  logAction({kind:'place', r, c});
   passStreak = 0;
   placementsLeft -= 1;
   if(placementsLeft > 0 && getAvailableMoves().length > 0){
@@ -1180,6 +1265,7 @@ function placeStone(r,c,mv){
 }
 
 function endTurn(){
+  const finishedPlayer = current;
   const whiteFirstTurnBonus = (current === 2 && turnNumber === 2);
   drawCard(current);
   if(whiteFirstTurnBonus) drawCard(current);
@@ -1195,12 +1281,14 @@ function endTurn(){
   pendingCard = null;
   cardUsesLeft = 1;
   placementsLeft = 1;
-  handRevealed = {1:false, 2:false};
+  handRevealed = onlineMode ? {1: myPlayerNumber===1, 2: myPlayerNumber===2} : {1:false, 2:false};
   doubleTapCostCap = null;
   freeDropActive = false;
   lastMindRead = null;
   redrawUsedThisTurn = false;
   redrawPending = false;
+  lastTurnLog = (turnActionLog && turnActionLog.length>0) ? {player: finishedPlayer, actions: turnActionLog} : null;
+  turnActionLog = [];
   checkGameEnd();
   render();
   if(onlineMode) pushOnlineState();
@@ -1215,6 +1303,7 @@ function checkGameEnd(){
 
 function consumeCard(){
   const type = pendingCard.card.type;
+  logAction({kind:'card', cardType:type});
   if(pendingCard.isRecycled){
     const cost = pendingCard.dynamicCost;
     bits[current] = Math.max(0, bits[current] - cost);
@@ -1535,6 +1624,7 @@ function handleRedrawDiscard(idx){
   drawCard(current);
   redrawUsedThisTurn = true;
   redrawPending = false;
+  logAction({kind:'redraw'});
   render();
   if(onlineMode) pushOnlineState();
 }
@@ -1702,6 +1792,7 @@ function doPass(){
   if(redrawPending) return;
   if(gameOver || pendingCard) return;
   if(getAvailableMoves().length>0) return;
+  logAction({kind:'pass'});
   passStreak += 1;
   if(passStreak >= 2){
     gameOver = true;
@@ -1943,10 +2034,10 @@ function render(){
       const eligible = recycleTargeting && canAct() && isRecycleEligible(card);
       if(eligible){
         chip.classList.add('recycle-target');
-        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／リサイクルコスト'+recycleCost(card.type)+'）' : ' (used by '+ownerLabel+' / recycle cost '+recycleCost(card.type)+')');
+        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／リサイクルコスト'+recycleCost(card.type)+'）\n'+t.desc[LANG] : ' (used by '+ownerLabel+' / recycle cost '+recycleCost(card.type)+')\n'+t.desc[LANG]);
         chip.addEventListener('click', ()=>handleRecycleTarget(idx));
       } else {
-        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／コスト'+t.cost+'）' : ' (used by '+ownerLabel+' / cost '+t.cost+')');
+        chip.title = t.name[LANG]+(LANG==='ja' ? '（'+ownerLabel+'が使用／コスト'+t.cost+'）\n'+t.desc[LANG] : ' (used by '+ownerLabel+' / cost '+t.cost+')\n'+t.desc[LANG]);
         if(recycleTargeting) chip.style.opacity = '.35';
       }
       discardEl.appendChild(chip);
@@ -1971,6 +2062,17 @@ function render(){
     mrBanner.style.display = 'none';
   }
 
+  // last turn action log
+  const lastTurnEl = document.getElementById('lastTurnBanner');
+  if(lastTurnLog && lastTurnLog.actions && lastTurnLog.actions.length>0){
+    const label = lastTurnLog.player===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+    const descs = lastTurnLog.actions.map(describeAction).filter(Boolean).join(LANG==='ja' ? '　→　' : '  \u2192  ');
+    lastTurnEl.style.display = 'block';
+    lastTurnEl.innerHTML = (LANG==='ja' ? '⏮️ 前のターン（<b>'+label+'</b>）：' : '⏮️ Previous turn (<b>'+label+'</b>): ')+descs;
+  } else {
+    lastTurnEl.style.display = 'none';
+  }
+
   // status
   const statusEl = document.getElementById('statusMsg');
   const cancelBtn = document.getElementById('cancelBtn');
@@ -1989,6 +2091,20 @@ function render(){
   redrawBtn.style.display = 'none';
   redrawCancelBtn.style.display = 'none';
   mindReadSkipBtn.style.display = 'none';
+
+  // dedicated turn indicator (near the shared deck, above the board)
+  const turnIndicatorEl = document.getElementById('turnIndicator');
+  const turnIndicatorDot = document.getElementById('turnIndicatorDot');
+  const turnIndicatorText = document.getElementById('turnIndicatorText');
+  if(gameOver){
+    turnIndicatorEl.style.display = 'none';
+  } else {
+    turnIndicatorEl.style.display = 'flex';
+    const curLabel = current===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+    turnIndicatorDot.className = 'stone-dot ' + (current===1 ? 'b' : 'w');
+    turnIndicatorText.textContent = LANG==='ja' ? curLabel+'のターン' : curLabel+'\u2019s Turn';
+    turnIndicatorEl.classList.toggle('pulsing', !onlineMode || myPlayerNumber===current);
+  }
 
   if(onlineMode && onlineWaitingForOpponent && !gameOver){
     statusEl.innerHTML = '⏳ '+tr('onlineWaitingOpponent');
@@ -2239,7 +2355,7 @@ function serializeState(seq){
   // requester-only information learned via the mindReadOp handshake, not
   // public game state - syncing it would let a later unrelated push from
   // either side clobber the requester's own freshly-learned reveal.
-  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp};
+  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog};
 }
 function applyRemoteState(data){
   hands = hands || {1:[], 2:[]};
@@ -2256,6 +2372,7 @@ function applyRemoteState(data){
   lastMindRead = preserveMindReadState ? keepLastMindRead : null;
   handCounts = data.handCounts || handCounts;
   mindReadOp = data.mindReadOp || null;
+  lastTurnLog = data.lastTurnLog || null;
   if(myPlayerNumber){
     const opp = opponentOf(myPlayerNumber);
     const n = (handCounts && handCounts[opp]) || 0;
@@ -2368,6 +2485,7 @@ async function joinRoom(){
     applyRemoteState(room.state);
     hands[2] = (room.hands && room.hands.white) ? room.hands.white : [];
     handCounts[2] = hands[2].length;
+    handRevealed = {1:false, 2:true};
     onlineWaitingForOpponent=false;
     showGameScreen(); updateOnlineInfoBar(); render(); startPolling();
   }catch(e){
@@ -2386,6 +2504,7 @@ async function leaveRoom(){
   onlineMode=false; onlineRoomCode=null; myPlayerNumber=null;
   onlineJoined={1:false,2:false}; onlineWaitingForOpponent=false;
   mindReadOp=null; mindReadProcessedIds=new Set(); handCounts={1:0,2:0};
+  turnActionLog=[]; lastTurnLog=null;
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
   document.getElementById('overlay').classList.remove('show');
@@ -2405,7 +2524,7 @@ async function leaveRoom(){
 function applyI18nStatic(){
   document.getElementById('pageTitle').textContent = tr('pageTitle');
   document.title = tr('pageTitle');
-  document.getElementById('titleH1').textContent = tr('h1');
+  document.getElementById('titleH1').innerHTML = tr('h1')+' <span class="version-tag">'+APP_VERSION+'</span>';
   document.getElementById('titleSubtitle').textContent = tr('subtitle');
   document.getElementById('modeLocalTitle').textContent = tr('modeLocalTitle');
   document.getElementById('modeLocalBadge').textContent = tr('modeLocalBadge');
@@ -2428,7 +2547,7 @@ function applyI18nStatic(){
   document.getElementById('waitingHint').textContent = tr('waitingHint');
   document.getElementById('waitingCancelBtn').textContent = tr('waitingCancelBtn');
   document.getElementById('backToTitleLabel').textContent = tr('backToTitleLabel');
-  document.getElementById('gameH1').textContent = tr('h1');
+  document.getElementById('gameH1').innerHTML = tr('h1')+' <span class="version-tag">'+APP_VERSION+'</span>';
   document.getElementById('gameSubtitle').textContent = tr('subtitle');
   document.getElementById('labelBlackPlayer').textContent = tr('labelBlackPlayer');
   document.getElementById('labelWhitePlayer').textContent = tr('labelWhitePlayer');
