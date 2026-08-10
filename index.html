@@ -1323,6 +1323,7 @@ function finishBonusPlacement(){
   if(pendingCard || redrawPending) return;
   if(placementsLeft <= 0) return;
   if(getAvailableMoves().length > 0) return;
+  if(!turnActionLog.some(a=>a.kind==='place')) return; // never a substitute for a genuine first-placement pass
   endTurn();
 }
 
@@ -2333,7 +2334,11 @@ function render(){
       if(pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true){
         if(canAct()) mindReadSkipBtn.style.display = 'inline-block';
       } else if(canAct()) cancelBtn.style.display = 'inline-block';
-    } else if(moves.length===0 && placementsLeft>0){
+    } else if(moves.length===0 && turnActionLog.some(a=>a.kind==='place')){
+      // A stone was ALREADY placed this turn (only possible mid Two Drop,
+      // waiting on its 2nd/bonus placement) - a genuinely fresh stuck turn
+      // never reaches this branch, since placementsLeft is always >0 at the
+      // start of every turn regardless of whether Two Drop is involved.
       statusEl.innerHTML = LANG==='ja'
         ? '<b>'+turnLabel+'</b>のターン — ⏫ツードロップの2回目に置ける場所がありません。パスの回数にはカウントされず、このままターンを終了できます。'
         : '<b>'+turnLabel+'</b>\u2019s turn \u2014 ⏫ No legal spot for Two Drop\u2019s second placement. This won\u2019t count as a Pass; you can just end your turn.';
