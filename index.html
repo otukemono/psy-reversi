@@ -286,7 +286,15 @@
   }
   .stone-dot.b{background:radial-gradient(circle at 32% 30%, var(--black-a), var(--black-b));}
   .stone-dot.w{background:radial-gradient(circle at 32% 30%, var(--white-a), var(--white-b));}
-  .hand-score{font-size:12px;color:var(--text-dim);}
+  .hand-score{font-size:12px;color:var(--text-dim); display:flex; align-items:center; gap:3px; flex-wrap:wrap;}
+  .stat-value{
+    font-size:18px;
+    font-weight:800;
+    font-family:'Shippori Mincho',serif;
+    padding:0 1px;
+  }
+  .stat-stones{ color:#6fc6ff; text-shadow:0 0 9px rgba(111,198,255,.55); }
+  .stat-bits{ color:#6be89a; text-shadow:0 0 9px rgba(107,232,154,.55); }
   .hand-cards{
     display:flex;gap:7px;flex-wrap:wrap;
     min-height:78px;
@@ -847,7 +855,7 @@
     <div class="hand-panel" id="handPanel1">
       <div class="hand-head">
         <div class="hand-title"><span class="stone-dot b"></span><span id="labelBlackPlayer">黒プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones1">石</span><span id="score1">2</span>／⚡<span id="bits1">0</span></div>
+        <div class="hand-score"><span id="labelStones1">石</span><span id="score1" class="stat-value stat-stones">2</span>／⚡<span id="bits1" class="stat-value stat-bits">0</span></div>
       </div>
       <button class="btn reveal-btn" id="revealBtn1">🔍 <span id="revealBtn1Label">自分の手札を見る</span></button>
       <div class="hand-cards" id="hand1"></div>
@@ -860,7 +868,7 @@
     <div class="hand-panel" id="handPanel2">
       <div class="hand-head">
         <div class="hand-title"><span class="stone-dot w"></span><span id="labelWhitePlayer">白プレイヤー</span></div>
-        <div class="hand-score"><span id="labelStones2">石</span><span id="score2">2</span>／⚡<span id="bits2">0</span></div>
+        <div class="hand-score"><span id="labelStones2">石</span><span id="score2" class="stat-value stat-stones">2</span>／⚡<span id="bits2" class="stat-value stat-bits">0</span></div>
       </div>
       <button class="btn reveal-btn" id="revealBtn2">🔍 <span id="revealBtn2Label">自分の手札を見る</span></button>
       <div class="hand-cards" id="hand2"></div>
@@ -1193,7 +1201,7 @@ const STR = {
 };
 function tr(key){ return STR[LANG][key]; }
 
-let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog, deckReshuffleNotice, lastBoardManipEffect, twoDropFreeFirst, lastSkillAffectedCells;
+let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog, deckReshuffleNotice, lastBoardManipEffect, twoDropFreeFirst, lastSkillAffectedCells, resignedBy;
 let prevBoardSnapshot = null; // for render()'s diff-based animation; local-only, never synced
 let lastRenderedGameOver = false; // detects the moment gameOver flips true, for the end-game SE
 let soundMuted = false; // local-only UI preference, never synced
@@ -1336,6 +1344,7 @@ function initGame(){
   lastBoardManipEffect = null;
   twoDropFreeFirst = false;
   lastSkillAffectedCells = [];
+  resignedBy = null;
   prevBoardSnapshot = null; // no "previous" board yet - the opening layout shouldn't animate in
   lastRenderedGameOver = false;
   bits = {1:STARTING_BITS, 2:STARTING_BITS};
@@ -1600,6 +1609,68 @@ function applyDoubleBind(){
   consumeCard();
 }
 
+function applyReverse(){
+  if(!pendingCard || pendingCard.card.type!=='reverse' || pendingCard.step!==1 || !pendingCard.target) return;
+  const {r,c} = pendingCard.target;
+  if(board[r][c]===0 || protectedCells[cellKey(r,c)]) return;
+  const before = board[r][c];
+  board[r][c] = board[r][c]===1?2:1;
+  lastBoardManipEffect = {caster:current, sourceType:'reverse', castOnTurn:turnNumber, cells:[{r,c,before,after:board[r][c]}]};
+  lastSkillAffectedCells = [{r,c}];
+  consumeCard();
+}
+
+function applyBlock(){
+  if(!pendingCard || pendingCard.card.type!=='block' || pendingCard.step!==1 || !pendingCard.target) return;
+  const {r,c} = pendingCard.target;
+  if(board[r][c]===0 || protectedCells[cellKey(r,c)]) return;
+  protectedCells[cellKey(r,c)] = {caster:current};
+  consumeCard();
+}
+
+function applyBind(){
+  if(!pendingCard || pendingCard.card.type!=='bind' || pendingCard.step!==1 || !pendingCard.target) return;
+  const {r,c} = pendingCard.target;
+  if(board[r][c]!==0 || boundCells[cellKey(r,c)]) return;
+  boundCells[cellKey(r,c)] = {caster:current};
+  consumeCard();
+}
+
+function applySlide(){
+  if(!pendingCard || pendingCard.card.type!=='slide' || pendingCard.step!==2 || !pendingCard.second) return;
+  const {r:fr,c:fc} = pendingCard.first;
+  const {r,c} = pendingCard.second;
+  if(board[fr][fc]===0 || board[r][c]!==0 || boundCells[cellKey(r,c)]){
+    // target became invalid since it was picked (rare) - drop back to
+    // destination-selection instead of silently doing nothing
+    pendingCard.step = 1; pendingCard.second = null; render(); return;
+  }
+  const movingBefore = board[fr][fc];
+  board[r][c] = board[fr][fc];
+  board[fr][fc] = 0;
+  const oldKey = cellKey(fr,fc), newKey = cellKey(r,c);
+  if(protectedCells[oldKey]){ protectedCells[newKey]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
+  lastBoardManipEffect = {caster:current, sourceType:'slide', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:movingBefore,after:0},{r,c,before:0,after:movingBefore}]};
+  lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
+  consumeCard();
+}
+
+function applySwap(){
+  if(!pendingCard || pendingCard.card.type!=='swap' || pendingCard.step!==2 || !pendingCard.second) return;
+  const {r:fr,c:fc} = pendingCard.first;
+  const {r,c} = pendingCard.second;
+  if(board[fr][fc]===0 || board[r][c]===0 || protectedCells[cellKey(fr,fc)] || protectedCells[cellKey(r,c)]){
+    pendingCard.step = 1; pendingCard.second = null; render(); return;
+  }
+  const tmp = board[fr][fc];
+  const destBefore = board[r][c];
+  board[fr][fc] = board[r][c];
+  board[r][c] = tmp;
+  lastBoardManipEffect = {caster:current, sourceType:'swap', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:tmp,after:destBefore},{r,c,before:destBefore,after:tmp}]};
+  lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
+  consumeCard();
+}
+
 function confirmPendingCard(){
   if(!canAct()) return;
   if(!pendingCard) return;
@@ -1608,6 +1679,11 @@ function confirmPendingCard(){
     applyCounterShift();
     return;
   }
+  if(type==='reverse' && pendingCard.step===1){ applyReverse(); return; }
+  if(type==='block' && pendingCard.step===1){ applyBlock(); return; }
+  if(type==='bind' && pendingCard.step===1){ applyBind(); return; }
+  if(type==='slide' && pendingCard.step===2){ applySlide(); return; }
+  if(type==='swap' && pendingCard.step===2){ applySwap(); return; }
   if(NO_TARGET_CARDS.includes(type)){ consumeCard(); return; }
   if((type==='triReverse' || type==='triBlock') && pendingCard.step===2){
     applyTrioEffect();
@@ -1847,39 +1923,34 @@ function handleCardTarget(r,c){
   const key = cellKey(r,c);
   if(type==='reverse'){
     if(board[r][c]===0 || protectedCells[key]) return;
-    const before = board[r][c];
-    board[r][c] = board[r][c]===1?2:1;
-    lastBoardManipEffect = {caster:current, sourceType:'reverse', castOnTurn:turnNumber, cells:[{r,c,before,after:board[r][c]}]};
-    lastSkillAffectedCells = [{r,c}];
-    consumeCard();
+    pendingCard.target = {r,c};
+    pendingCard.step = 1;
+    render();
   } else if(type==='block'){
     if(board[r][c]===0 || protectedCells[key]) return;
-    protectedCells[key] = {caster:current};
-    consumeCard();
+    pendingCard.target = {r,c};
+    pendingCard.step = 1;
+    render();
   } else if(type==='slide'){
     if(pendingCard.step===0){
       if(board[r][c]===0 || protectedCells[key]) return;
       pendingCard.first = {r,c};
       pendingCard.step = 1;
       render();
-    } else {
+    } else if(pendingCard.step===1){
       const {r:fr,c:fc} = pendingCard.first;
       const dr=Math.abs(r-fr), dc=Math.abs(c-fc);
       const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
       if(!adjacent || board[r][c]!==0 || boundCells[key]) return;
-      const movingBefore = board[fr][fc];
-      board[r][c] = board[fr][fc];
-      board[fr][fc] = 0;
-      const oldKey = cellKey(fr,fc);
-      if(protectedCells[oldKey]){ protectedCells[key]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
-      lastBoardManipEffect = {caster:current, sourceType:'slide', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:movingBefore,after:0},{r,c,before:0,after:movingBefore}]};
-      lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
-      consumeCard();
+      pendingCard.second = {r,c};
+      pendingCard.step = 2;
+      render();
     }
   } else if(type==='bind'){
     if(board[r][c]!==0 || boundCells[key]) return;
-    boundCells[key] = {caster:current};
-    consumeCard();
+    pendingCard.target = {r,c};
+    pendingCard.step = 1;
+    render();
   } else if(type==='swap'){
     if(pendingCard.step===0){
       if(board[r][c]===0 || protectedCells[key]) return;
@@ -1887,20 +1958,16 @@ function handleCardTarget(r,c){
       pendingCard.firstColor = board[r][c];
       pendingCard.step = 1;
       render();
-    } else {
+    } else if(pendingCard.step===1){
       const {r:fr,c:fc} = pendingCard.first;
       const dr = Math.abs(r-fr), dc = Math.abs(c-fc);
       const adjacent = dr<=1 && dc<=1 && !(dr===0&&dc===0);
       if(!adjacent) return;
       if(board[r][c]===0 || protectedCells[key]) return;
       if(board[r][c]===pendingCard.firstColor) return;
-      const tmp = board[fr][fc];
-      const destBefore = board[r][c];
-      board[fr][fc] = board[r][c];
-      board[r][c] = tmp;
-      lastBoardManipEffect = {caster:current, sourceType:'swap', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:tmp,after:destBefore},{r,c,before:destBefore,after:tmp}]};
-      lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
-      consumeCard();
+      pendingCard.second = {r,c};
+      pendingCard.step = 2;
+      render();
     }
   } else if(type==='triReverse'){
     if(pendingCard.step===2) return;
@@ -2143,6 +2210,12 @@ function render(){
       }
       if(pendingCard && pendingCard.card.type==='counterShift' && lastBoardManipEffect){
         if(lastBoardManipEffect.cells.some(cell=>cell.r===r && cell.c===c && board[cell.r][cell.c]===cell.after)) div.classList.add('trio-preview');
+      }
+      if(pendingCard && ['reverse','block','bind'].includes(pendingCard.card.type) && pendingCard.step===1 && pendingCard.target){
+        if(pendingCard.target.r===r && pendingCard.target.c===c) div.classList.add('trio-preview');
+      }
+      if(pendingCard && ['slide','swap'].includes(pendingCard.card.type) && pendingCard.step===2 && pendingCard.second){
+        if((pendingCard.first.r===r && pendingCard.first.c===c) || (pendingCard.second.r===r && pendingCard.second.c===c)) div.classList.add('trio-preview');
       }
       if(!pendingCard && moveSet.has(key) && !gameOver && canAct()) div.classList.add('clickable');
 
@@ -2432,12 +2505,32 @@ function render(){
       let msg = pendingCard.isRecycled
         ? '<b>♻️ '+(LANG==='ja'?'リサイクル発動：':'Recycled: ')+t.icon+' '+t.name[LANG]+'</b>'+(LANG==='ja' ? '使用中（コスト'+pendingCard.dynamicCost+'） — ' : ' in progress (cost '+pendingCard.dynamicCost+') \u2014 ')
         : '<b>'+t.icon+' '+t.name[LANG]+'</b>'+(LANG==='ja' ? '使用中 — ' : ' in progress \u2014 ');
-      if(pendingCard.card.type==='slide' && pendingCard.step===1){
+      if(pendingCard.card.type==='reverse' && pendingCard.step===1){
+        msg += LANG==='ja' ? '金色の枠のマスでよろしければ「発動する」を押してください。' : 'If the highlighted cell looks right, press "Activate".';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(pendingCard.card.type==='block' && pendingCard.step===1){
+        msg += LANG==='ja' ? '金色の枠のマスでよろしければ「発動する」を押してください。' : 'If the highlighted cell looks right, press "Activate".';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(pendingCard.card.type==='bind' && pendingCard.step===1){
+        msg += LANG==='ja' ? '金色の枠のマスでよろしければ「発動する」を押してください。' : 'If the highlighted cell looks right, press "Activate".';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
+      } else if(pendingCard.card.type==='slide' && pendingCard.step===1){
         msg += LANG==='ja' ? '移動先の空マスを選んでください。' : 'Choose an empty destination cell.';
+      } else if(pendingCard.card.type==='slide' && pendingCard.step===2){
+        msg += LANG==='ja' ? '金色の枠の移動でよろしければ「発動する」を押してください。' : 'If the highlighted move looks right, press "Activate".';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
       } else if(pendingCard.card.type==='swap' && pendingCard.step===0){
         msg += LANG==='ja' ? '起点となる石を1つ選んでください（自分・相手どちらの色でも構いません）。' : 'Choose a starting stone (either color is fine).';
       } else if(pendingCard.card.type==='swap' && pendingCard.step===1){
         msg += LANG==='ja' ? '起点に隣接する、色が異なる石を1つ選んでください。' : 'Choose an adjacent stone of the opposite color to swap with.';
+      } else if(pendingCard.card.type==='swap' && pendingCard.step===2){
+        msg += LANG==='ja' ? '金色の枠の入れ替えでよろしければ「発動する」を押してください。' : 'If the highlighted swap looks right, press "Activate".';
+        confirmBtn.textContent = tr('confirmActivate');
+        if(canAct()) confirmBtn.style.display = 'inline-block';
       } else if(pendingCard.card.type==='triReverse' && pendingCard.step===0){
         msg += LANG==='ja' ? '起点となるマスを1つ選んでください。' : 'Choose a starting cell.';
       } else if(pendingCard.card.type==='triReverse' && pendingCard.step===1){
@@ -2547,7 +2640,17 @@ function render(){
     const b = board.flat().filter(v=>v===1).length;
     const w = board.flat().filter(v=>v===2).length;
     let result;
-    if(LANG==='ja'){
+    if(resignedBy){
+      const resignerLabel = resignedBy===1 ? tr('turnLabelBlack') : tr('turnLabelWhite');
+      const winnerLabel = resignedBy===1 ? tr('turnLabelWhite') : tr('turnLabelBlack');
+      if(LANG==='ja'){
+        result = winnerLabel+'の勝ち（投了）';
+        statusEl.innerHTML = '対局終了 — <b>'+resignerLabel+'が投了</b>し、<b>'+winnerLabel+'の勝ち</b>となりました。';
+      } else {
+        result = winnerLabel+' wins (resignation)';
+        statusEl.innerHTML = 'Game over \u2014 <b>'+resignerLabel+' resigned</b>, so <b>'+winnerLabel+' wins</b>.';
+      }
+    } else if(LANG==='ja'){
       result = b===w ? '引き分け' : (b>w ? '黒の勝ち' : '白の勝ち');
       statusEl.innerHTML = '対局終了 — <b>'+result+'</b>（黒 '+b+' - '+w+' 白）';
     } else {
@@ -2556,8 +2659,8 @@ function render(){
     }
     document.getElementById('resultTitle').textContent = result;
     document.getElementById('resultScore').innerHTML = LANG==='ja'
-      ? '黒 <b>'+b+'</b> — <b>'+w+'</b> 白'
-      : 'Black <b>'+b+'</b> \u2014 <b>'+w+'</b> White';
+      ? '黒 <b>'+b+'</b> — <b>'+w+'</b> 白'+(resignedBy ? '（投了による終局）' : '')
+      : 'Black <b>'+b+'</b> \u2014 <b>'+w+'</b> White'+(resignedBy ? ' (ended by resignation)' : '');
     document.getElementById('overlay').classList.add('show');
     document.getElementById('playAgainBtn').style.display = onlineMode ? 'none' : 'inline-block';
     document.getElementById('leaveRoomAfterGameBtn').style.display = onlineMode ? 'inline-block' : 'none';
@@ -2692,7 +2795,7 @@ function serializeState(seq){
   // requester-only information learned via the mindReadOp handshake, not
   // public game state - syncing it would let a later unrelated push from
   // either side clobber the requester's own freshly-learned reveal.
-  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,twoDropFreeFirst,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog,deckReshuffleNotice,lastBoardManipEffect,lastSkillAffectedCells};
+  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,twoDropFreeFirst,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog,deckReshuffleNotice,lastBoardManipEffect,lastSkillAffectedCells,resignedBy};
 }
 function applyRemoteState(data){
   hands = hands || {1:[], 2:[]};
@@ -2713,6 +2816,7 @@ function applyRemoteState(data){
   deckReshuffleNotice = !!data.deckReshuffleNotice;
   lastBoardManipEffect = data.lastBoardManipEffect || null;
   lastSkillAffectedCells = data.lastSkillAffectedCells || [];
+  resignedBy = data.resignedBy || null;
   if(myPlayerNumber){
     const opp = opponentOf(myPlayerNumber);
     const n = (handCounts && handCounts[opp]) || 0;
@@ -2835,6 +2939,25 @@ async function joinRoom(){
     onlineJoinPending=false; btn.disabled=false;
   }
 }
+async function requestResign(){
+  if(!onlineMode || gameOver || onlineWaitingForOpponent){
+    // local mode, game already ended naturally, or no real match has
+    // started yet (still waiting for an opponent to join) - just leave,
+    // no resignation ceremony needed.
+    leaveRoom();
+    return;
+  }
+  const confirmed = window.confirm(LANG==='ja'
+    ? '本当に投了しますか？この対局は相手の勝利として終了し、ルームを退出します。'
+    : 'Are you sure you want to resign? This match will end as a win for your opponent, and you will leave the room.');
+  if(!confirmed) return;
+  resignedBy = myPlayerNumber;
+  gameOver = true;
+  render();
+  try{ await pushOnlineState(); }catch(e){ console.warn('resign push failed', e); }
+  leaveRoom();
+}
+
 async function leaveRoom(){
   const code=onlineRoomCode;
   const role=myPlayerNumber;
@@ -2846,6 +2969,7 @@ async function leaveRoom(){
   mindReadOp=null; mindReadProcessedIds=new Set(); handCounts={1:0,2:0};
   turnActionLog=[]; lastTurnLog=null;
   deckReshuffleNotice=false; lastBoardManipEffect=null;
+  resignedBy=null;
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
   document.getElementById('overlay').classList.remove('show');
@@ -2969,9 +3093,9 @@ document.getElementById('createRoomBtn').addEventListener('click', createRoom);
 document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
 document.getElementById('waitingCancelBtn').addEventListener('click', leaveRoom);
 document.getElementById('backToTitleBtn').addEventListener('click', ()=>{
-  if(onlineMode){ leaveRoom(); } else { showTitleScreen(); }
+  if(onlineMode){ requestResign(); } else { showTitleScreen(); }
 });
-document.getElementById('leaveRoomInGameBtn').addEventListener('click', leaveRoom);
+document.getElementById('leaveRoomInGameBtn').addEventListener('click', requestResign);
 document.getElementById('leaveRoomAfterGameBtn').addEventListener('click', leaveRoom);
 
 document.getElementById('soundToggleBtn').addEventListener('click', ()=>{
