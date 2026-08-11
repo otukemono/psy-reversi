@@ -1354,6 +1354,7 @@ let onlineIsCreator = false;        // true if I created the room, regardless of
 let randomMatchTicketId = null;     // my own matchmaking ticket, while waiting to be paired
 let randomMatchSearching = false;   // true while actively searching (covers pre-ticket + waiting)
 let randomMatchRetryTimer = null;   // periodic re-scan so two simultaneous waiters still pair up
+let randomMatchFailCount = 0;       // consecutive attemptMatchOrWait() errors (e.g. permission issues)
 let mindReadOp = null;              // cross-player mind-read request/reveal/swap handshake object
 let mindReadProcessedIds = new Set(); // guards against re-processing the same handshake phase twice
 
@@ -3036,6 +3037,7 @@ async function joinRoom(){
 // ---------- random matchmaking ----------
 async function startRandomMatch(){
   if(onlineCreatePending || onlineJoinPending || randomMatchSearching) return;
+  randomMatchFailCount = 0;
   const btn = document.getElementById('modeBtnOnlinePublic');
   if(btn) btn.disabled = true;
   randomMatchSearching = true;
@@ -3056,6 +3058,7 @@ async function attemptMatchOrWait(){
   if(!randomMatchSearching) return; // cancelled while an earlier step was in flight
   try{
     const existing = await window.psyFirebase.findWaitingTicket();
+    randomMatchFailCount = 0; // that call succeeded - we have working access, reset the failure streak
     if(existing){
       const claimed = await window.psyFirebase.claimTicket(existing.id);
       if(claimed && randomMatchSearching){
@@ -3107,6 +3110,30 @@ async function attemptMatchOrWait(){
     randomMatchRetryTimer = setTimeout(()=>{ randomMatchRetryTimer=null; attemptMatchOrWait(); }, 3000);
   }catch(e){
     console.error('attemptMatchOrWait failed', e);
+    randomMatchFailCount += 1;
+    if(randomMatchFailCount >= 3){
+      // Repeated failures (most likely a Firebase permission/config issue,
+      // not "nobody else is searching") - stop silently retrying forever
+      // and tell the person directly instead of leaving them staring at an
+      // infinite spinner with no explanation.
+      randomMatchSearching = false;
+      if(randomMatchRetryTimer){ clearTimeout(randomMatchRetryTimer); randomMatchRetryTimer=null; }
+      window.psyFirebase.unlistenTicket();
+      if(randomMatchTicketId){
+        const id = randomMatchTicketId; randomMatchTicketId = null;
+        try{ await window.psyFirebase.cancelTicket(id); }catch(e2){}
+      }
+      const btn = document.getElementById('modeBtnOnlinePublic');
+      if(btn) btn.disabled = false;
+      hideWaitingOverlay();
+      showTitleScreen();
+      const msgEl = document.getElementById('lobbyMsg');
+      if(msgEl){ msgEl.className='lobby-msg error'; msgEl.textContent = tr('lobbyErrorStorage'); }
+      window.alert(LANG==='ja'
+        ? 'ランダムマッチの検索でエラーが続いています。時間を置いて再度お試しください。'
+        : 'Random match search kept failing. Please try again in a moment.');
+      return;
+    }
     randomMatchRetryTimer = setTimeout(()=>{ randomMatchRetryTimer=null; attemptMatchOrWait(); }, 4000);
   }
 }
@@ -3158,7 +3185,7 @@ async function leaveRoom(){
   deckReshuffleNotice=false; lastBoardManipEffect=null;
   resignedBy=null;
   if(randomMatchRetryTimer){ clearTimeout(randomMatchRetryTimer); randomMatchRetryTimer=null; }
-  randomMatchSearching=false; randomMatchTicketId=null;
+  randomMatchSearching=false; randomMatchTicketId=null; randomMatchFailCount=0;
   onlineIsCreator=false;
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
