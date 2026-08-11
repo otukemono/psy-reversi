@@ -201,6 +201,12 @@
     margin-bottom:6px;gap:8px;flex-wrap:wrap;
   }
   .top-bar-left{display:flex;align-items:center;gap:10px;}
+  .top-bar-right-controls{display:flex;align-items:center;gap:8px;}
+  .sound-toggle-btn{
+    font-size:15px;
+    padding:6px 10px;
+    line-height:1;
+  }
 .top-info-row{
     display:flex;
     align-items:center;
@@ -418,12 +424,51 @@
   .cell .stone{
     width:82%;height:82%;border-radius:50%;
     box-shadow:0 3px 5px rgba(0,0,0,.5), inset -3px -3px 5px rgba(0,0,0,.35), inset 3px 3px 5px rgba(255,255,255,.15);
-    transition:transform .25s ease;
-    animation:pop .18s ease;
   }
-  @keyframes pop{from{transform:scale(.3);}to{transform:scale(1);}}
+  .cell .stone.anim-pop{ animation: stone-pop-in .28s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes stone-pop-in{
+    0%{ transform:scale(0); opacity:0; }
+    65%{ transform:scale(1.18); opacity:1; }
+    100%{ transform:scale(1); }
+  }
   .cell .stone.b{background:radial-gradient(circle at 32% 28%, var(--black-a), var(--black-b) 75%);}
   .cell .stone.w{background:radial-gradient(circle at 32% 28%, var(--white-a), var(--white-b) 75%);}
+
+  /* stone flip (skill or capture) - two-faced 3D card flip */
+  .stone-flip-outer{
+    width:82%;height:82%;
+    perspective:240px;
+  }
+  .stone-flip-inner{
+    position:relative;width:100%;height:100%;
+    transform-style:preserve-3d;
+    animation: stone-flip-anim .46s cubic-bezier(.45,.05,.55,.95) both;
+  }
+  @keyframes stone-flip-anim{
+    from{ transform:rotateY(0deg); }
+    to{ transform:rotateY(180deg); }
+  }
+  .stone-face{
+    position:absolute;inset:0;border-radius:50%;
+    backface-visibility:hidden;
+    box-shadow:0 3px 5px rgba(0,0,0,.5), inset -3px -3px 5px rgba(0,0,0,.35), inset 3px 3px 5px rgba(255,255,255,.15);
+  }
+  .stone-face-front{ transform:rotateY(0deg); }
+  .stone-face-back{ transform:rotateY(180deg); }
+  .stone-face.b{background:radial-gradient(circle at 32% 28%, var(--black-a), var(--black-b) 75%);}
+  .stone-face.w{background:radial-gradient(circle at 32% 28%, var(--white-a), var(--white-b) 75%);}
+
+  /* skill-caused change: golden pulse ring around the cell, distinct from
+     a plain capture flip, so it's visually obvious a skill (not a normal
+     placement) touched this square */
+  .cell.skill-changed{ animation: skill-cell-pulse 1.1s ease-out; }
+  @keyframes skill-cell-pulse{
+    0%{ box-shadow: inset 0 0 0 0 rgba(212,175,55,0); background:rgba(212,175,55,0); }
+    25%{ box-shadow: inset 0 0 16px 4px rgba(212,175,55,.85); background:rgba(212,175,55,.22); }
+    100%{ box-shadow: inset 0 0 0 0 rgba(212,175,55,0); background:rgba(212,175,55,0); }
+  }
+  .cell.skill-vacated{ animation: skill-cell-pulse 1.1s ease-out; }
+
   .cell .dot{
     width:22%;height:22%;border-radius:50%;
     background:rgba(212,175,55,.55);
@@ -735,9 +780,12 @@
       <button class="btn" id="backToTitleBtn">← <span id="backToTitleLabel">タイトルへ</span></button>
       <span id="onlineRoomBadge" style="display:none;font-size:11.5px;color:var(--gold-soft);"></span>
     </div>
-    <div class="lang-toggle">
-      <button id="langBtnJaGame" class="active">日本語</button>
-      <button id="langBtnEnGame">English</button>
+    <div class="top-bar-right-controls">
+      <button class="btn sound-toggle-btn" id="soundToggleBtn" title="サウンドのオン/オフ">🔊</button>
+      <div class="lang-toggle">
+        <button id="langBtnJaGame" class="active">日本語</button>
+        <button id="langBtnEnGame">English</button>
+      </div>
     </div>
   </div>
   <h1 id="gameH1">PSY-REVERSI｜サイリバーシ α</h1>
@@ -1145,7 +1193,10 @@ const STR = {
 };
 function tr(key){ return STR[LANG][key]; }
 
-let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog, deckReshuffleNotice, lastBoardManipEffect, twoDropFreeFirst;
+let board, current, hands, deck, discard, protectedCells, boundCells, pendingCard, cardUsesLeft, gameOver, idSeed, bits, placementsLeft, handRevealed, doubleTapCostCap, freeDropActive, lastMindRead, passStreak, turnNumber, redrawUsedThisTurn, redrawPending, turnActionLog, lastTurnLog, deckReshuffleNotice, lastBoardManipEffect, twoDropFreeFirst, lastSkillAffectedCells;
+let prevBoardSnapshot = null; // for render()'s diff-based animation; local-only, never synced
+let lastRenderedGameOver = false; // detects the moment gameOver flips true, for the end-game SE
+let soundMuted = false; // local-only UI preference, never synced
 
 function logAction(entry){
   turnActionLog = turnActionLog || [];
@@ -1161,6 +1212,55 @@ function describeAction(a){
   if(a.kind==='redraw') return LANG==='ja' ? '🔁 リドロー' : '🔁 Redraw';
   if(a.kind==='pass') return LANG==='ja' ? 'パス' : 'Passed';
   return '';
+}
+
+// ---------- sound effects (procedurally generated, no external audio files) ----------
+let audioCtx = null;
+function getAudioCtx(){
+  if(soundMuted) return null;
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }
+    catch(e){ return null; }
+  }
+  if(audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+function beep(freq, dur, type, vol, delaySec){
+  const ctx = getAudioCtx();
+  if(!ctx) return;
+  try{
+    const t0 = ctx.currentTime + (delaySec||0);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(vol==null?0.15:vol, t0+0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t0+dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(t0); osc.stop(t0+dur+0.03);
+  }catch(e){ /* audio is best-effort, never break the game over it */ }
+}
+function seStonePlace(){ beep(220,0.09,'sine',0.14,0); beep(140,0.08,'sine',0.09,0.01); }
+function seStoneFlip(delayMs){ beep(520,0.06,'triangle',0.09,(delayMs||0)/1000); }
+function seSkillCast(){ beep(660,0.12,'sine',0.11,0); beep(880,0.14,'sine',0.09,0.06); beep(1108,0.16,'sine',0.07,0.12); }
+function sePass(){ beep(300,0.11,'sine',0.08,0); beep(250,0.11,'sine',0.06,0.05); }
+function seCancel(){ beep(200,0.08,'triangle',0.07,0); }
+function seRedraw(){ beep(440,0.07,'triangle',0.08,0); beep(660,0.09,'triangle',0.08,0.06); }
+function seCardSelect(){ beep(380,0.06,'sine',0.07,0); }
+function seGameEnd(win){
+  const notes = win ? [523,659,784,1046] : [392,349,330,294];
+  notes.forEach((f,i)=>beep(f,0.28,'sine',0.12,i*0.13));
+}
+function playBoardChangeSounds(animPlan){
+  const entries = Object.values(animPlan);
+  if(entries.length===0) return;
+  const hasPop = entries.some(e=>e.kind==='pop');
+  const flips = entries.filter(e=>e.kind==='flip');
+  const hasSkill = entries.some(e=>e.skill);
+  if(hasPop) seStonePlace();
+  flips.forEach(f=>seStoneFlip(f.delay));
+  if(hasSkill) seSkillCast();
 }
 
 // ---- online state ----
@@ -1235,6 +1335,9 @@ function initGame(){
   deckReshuffleNotice = false;
   lastBoardManipEffect = null;
   twoDropFreeFirst = false;
+  lastSkillAffectedCells = [];
+  prevBoardSnapshot = null; // no "previous" board yet - the opening layout shouldn't animate in
+  lastRenderedGameOver = false;
   bits = {1:STARTING_BITS, 2:STARTING_BITS};
   placementsLeft = 1;
   handRevealed = onlineMode ? {1: myPlayerNumber===1, 2: myPlayerNumber===2} : {1:false, 2:false};
@@ -1297,6 +1400,7 @@ function computeValidMoves(player){
 }
 
 function placeStone(r,c,mv){
+  lastSkillAffectedCells = []; // a placement's own flips are always normal captures, never skill glow
   board[r][c] = current;
   mv.flips.forEach(([fr,fc])=>{
     if(!protectedCells[cellKey(fr,fc)]) board[fr][fc] = current;
@@ -1438,6 +1542,7 @@ function selectCard(cardId){
     if(!eligible) return;
   }
   if(card.type === 'counterShift' && !canUseCounterShift()) return;
+  seCardSelect();
   pendingCard = {card, step:0, first:null};
   if(LINE_DOMINATION_TYPES.includes(card.type)){
     pendingCard.mode = 'row';
@@ -1475,12 +1580,15 @@ function handleRecycleTarget(index){
 function applyLineDomination(){
   if(!pendingCard || !pendingCard.ready) return;
   const cells = pendingCard.lines.flat();
+  const changed = [];
   cells.forEach(({r,c})=>{
     const k = cellKey(r,c);
     if(board[r][c]!==0 && !protectedCells[k]){
       board[r][c] = current;
+      changed.push({r,c});
     }
   });
+  lastSkillAffectedCells = changed;
   consumeCard();
 }
 
@@ -1525,9 +1633,11 @@ function applyCounterShift(){
   // legitimately changed afterward - e.g. a normal capture during the
   // caster's own placement that same turn - are left untouched, so this
   // undoes only the skill's own contribution, never later game events.
+  const changed = [];
   lastBoardManipEffect.cells.forEach(({r,c,before,after})=>{
-    if(!protectedCells[cellKey(r,c)] && board[r][c]===after) board[r][c] = before;
+    if(!protectedCells[cellKey(r,c)] && board[r][c]===after){ board[r][c] = before; changed.push({r,c}); }
   });
+  lastSkillAffectedCells = changed;
   lastBoardManipEffect = null;
   consumeCard();
 }
@@ -1716,6 +1826,7 @@ function handleRedrawDiscard(idx){
   redrawUsedThisTurn = true;
   redrawPending = false;
   logAction({kind:'redraw'});
+  seRedraw();
   render();
   if(onlineMode) pushOnlineState();
 }
@@ -1725,6 +1836,7 @@ function cancelCard(){
   if(pendingCard && pendingCard.card.type==='mindRead' && pendingCard.awaitingSwap===true) return;
   const wasMindReadWaiting = pendingCard && pendingCard.card.type==='mindRead' && !!pendingCard.awaitingSwap;
   pendingCard = null;
+  seCancel();
   if(wasMindReadWaiting) mindReadOp = null;
   render();
   if(wasMindReadWaiting && onlineMode) pushOnlineState();
@@ -1738,6 +1850,7 @@ function handleCardTarget(r,c){
     const before = board[r][c];
     board[r][c] = board[r][c]===1?2:1;
     lastBoardManipEffect = {caster:current, sourceType:'reverse', castOnTurn:turnNumber, cells:[{r,c,before,after:board[r][c]}]};
+    lastSkillAffectedCells = [{r,c}];
     consumeCard();
   } else if(type==='block'){
     if(board[r][c]===0 || protectedCells[key]) return;
@@ -1760,6 +1873,7 @@ function handleCardTarget(r,c){
       const oldKey = cellKey(fr,fc);
       if(protectedCells[oldKey]){ protectedCells[key]=protectedCells[oldKey]; delete protectedCells[oldKey]; }
       lastBoardManipEffect = {caster:current, sourceType:'slide', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:movingBefore,after:0},{r,c,before:0,after:movingBefore}]};
+      lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
       consumeCard();
     }
   } else if(type==='bind'){
@@ -1785,6 +1899,7 @@ function handleCardTarget(r,c){
       board[fr][fc] = board[r][c];
       board[r][c] = tmp;
       lastBoardManipEffect = {caster:current, sourceType:'swap', castOnTurn:turnNumber, cells:[{r:fr,c:fc,before:tmp,after:destBefore},{r,c,before:destBefore,after:tmp}]};
+      lastSkillAffectedCells = [{r:fr,c:fc},{r,c}];
       consumeCard();
     }
   } else if(type==='triReverse'){
@@ -1862,7 +1977,10 @@ function applyTrioEffect(){
         flippedCells.push({r,c,before,after:board[r][c]});
       }
     });
-    if(flippedCells.length>0) lastBoardManipEffect = {caster:current, sourceType:'triReverse', castOnTurn:turnNumber, cells:flippedCells};
+    if(flippedCells.length>0){
+      lastBoardManipEffect = {caster:current, sourceType:'triReverse', castOnTurn:turnNumber, cells:flippedCells};
+      lastSkillAffectedCells = flippedCells.map(fc=>({r:fc.r,c:fc.c}));
+    }
   } else if(type==='triBlock'){
     cells.forEach(({r,c})=>{
       protectedCells[cellKey(r,c)] = {caster:current};
@@ -1902,6 +2020,7 @@ function doPass(){
   if(gameOver || pendingCard) return;
   if(getAvailableMoves().length>0) return;
   logAction({kind:'pass'});
+  sePass();
   passStreak += 1;
   if(passStreak >= PASS_STREAK_LIMIT){
     gameOver = true;
@@ -1989,6 +2108,15 @@ function render(){
   const moveSet = new Set(moves.map(m=>cellKey(m.r,m.c)));
   const cardTargets = getCardTargets();
 
+  // Diff against the last rendered board to figure out what to animate.
+  // prevBoardSnapshot is null on the very first render (opening layout -
+  // nothing should animate in). skillCellSet marks cells whose change came
+  // from a skill effect (vs. a normal capture flip), so they get a distinct
+  // golden pulse instead of - or in addition to - the plain flip/pop.
+  const skillCellSet = new Set((lastSkillAffectedCells||[]).map(c=>cellKey(c.r,c.c)));
+  let flipDelay = 0, popDelay = 0;
+  const animPlan = {}; // key -> {kind:'flip'|'pop', delay, fromColor, skill}
+
   const boardEl = document.getElementById('board');
   boardEl.innerHTML = '';
   for(let r=0;r<SIZE;r++){
@@ -2018,9 +2146,43 @@ function render(){
       }
       if(!pendingCard && moveSet.has(key) && !gameOver && canAct()) div.classList.add('clickable');
 
+      const prevVal = prevBoardSnapshot ? prevBoardSnapshot[r][c] : board[r][c];
+      const isSkillCell = skillCellSet.has(key);
+      if(prevVal !== board[r][c]){
+        if(isSkillCell) div.classList.add('skill-changed');
+        if(prevVal===0 && board[r][c]!==0){
+          animPlan[key] = {kind:'pop', delay:popDelay, skill:isSkillCell};
+          popDelay += 50;
+        } else if(prevVal!==0 && board[r][c]!==0){
+          animPlan[key] = {kind:'flip', delay:flipDelay, fromColor:prevVal===1?'b':'w', skill:isSkillCell};
+          flipDelay += 55;
+        } else if(prevVal!==0 && board[r][c]===0 && isSkillCell){
+          div.classList.add('skill-vacated');
+        }
+      }
+
       if(board[r][c]!==0){
         const stone = document.createElement('div');
-        stone.className = 'stone ' + (board[r][c]===1?'b':'w');
+        const colorClass = board[r][c]===1?'b':'w';
+        const plan = animPlan[key];
+        if(plan && plan.kind==='pop'){
+          stone.className = 'stone '+colorClass+' anim-pop';
+          stone.style.animationDelay = plan.delay+'ms';
+        } else if(plan && plan.kind==='flip'){
+          stone.className = 'stone-flip-outer';
+          stone.style.animationDelay = '0ms';
+          const inner = document.createElement('div');
+          inner.className = 'stone-flip-inner';
+          inner.style.animationDelay = plan.delay+'ms';
+          const front = document.createElement('div');
+          front.className = 'stone-face stone-face-front '+plan.fromColor;
+          const back = document.createElement('div');
+          back.className = 'stone-face stone-face-back '+colorClass;
+          inner.appendChild(front); inner.appendChild(back);
+          stone.appendChild(inner);
+        } else {
+          stone.className = 'stone ' + colorClass;
+        }
         div.appendChild(stone);
         if(protectedCells[key]){
           const b = document.createElement('div');
@@ -2040,6 +2202,22 @@ function render(){
       boardEl.appendChild(div);
     }
   }
+  // Snapshot the now-current board so the NEXT render() call can diff
+  // against it. Also fire sound effects for whatever just changed.
+  playBoardChangeSounds(animPlan);
+  prevBoardSnapshot = board.map(row=>row.slice());
+  if(gameOver && !lastRenderedGameOver){
+    let blackCount=0, whiteCount=0;
+    board.forEach(row=>row.forEach(v=>{ if(v===1) blackCount++; else if(v===2) whiteCount++; }));
+    if(!onlineMode || !myPlayerNumber){
+      seGameEnd(true);
+    } else {
+      const myCount = myPlayerNumber===1 ? blackCount : whiteCount;
+      const oppCount = myPlayerNumber===1 ? whiteCount : blackCount;
+      seGameEnd(myCount >= oppCount);
+    }
+  }
+  lastRenderedGameOver = gameOver;
 
   // hands
   const mindReadTargeting = pendingCard && pendingCard.card.type==='mindRead' && !pendingCard.awaitingSwap;
@@ -2514,7 +2692,7 @@ function serializeState(seq){
   // requester-only information learned via the mindReadOp handshake, not
   // public game state - syncing it would let a later unrelated push from
   // either side clobber the requester's own freshly-learned reveal.
-  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,twoDropFreeFirst,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog,deckReshuffleNotice,lastBoardManipEffect};
+  return {seq,board,current,deck,discard,protectedCells,boundCells,bits,placementsLeft,cardUsesLeft,doubleTapCostCap,freeDropActive,twoDropFreeFirst,passStreak,turnNumber,gameOver,idSeed,redrawUsedThisTurn,joined:onlineJoined,handCounts,mindReadOp,lastTurnLog,deckReshuffleNotice,lastBoardManipEffect,lastSkillAffectedCells};
 }
 function applyRemoteState(data){
   hands = hands || {1:[], 2:[]};
@@ -2534,6 +2712,7 @@ function applyRemoteState(data){
   lastTurnLog = data.lastTurnLog || null;
   deckReshuffleNotice = !!data.deckReshuffleNotice;
   lastBoardManipEffect = data.lastBoardManipEffect || null;
+  lastSkillAffectedCells = data.lastSkillAffectedCells || [];
   if(myPlayerNumber){
     const opp = opponentOf(myPlayerNumber);
     const n = (handCounts && handCounts[opp]) || 0;
@@ -2687,6 +2866,7 @@ function applyI18nStatic(){
   document.getElementById('pageTitle').textContent = tr('pageTitle');
   document.title = tr('pageTitle');
   document.getElementById('titleH1').textContent = tr('h1');
+  if(typeof updateSoundToggleUI==='function') updateSoundToggleUI();
   const titleVersionEl = document.getElementById('titleVersionTag');
   if(titleVersionEl) titleVersionEl.textContent = APP_VERSION;
   document.getElementById('titleSubtitle').textContent = tr('subtitle');
@@ -2793,6 +2973,20 @@ document.getElementById('backToTitleBtn').addEventListener('click', ()=>{
 });
 document.getElementById('leaveRoomInGameBtn').addEventListener('click', leaveRoom);
 document.getElementById('leaveRoomAfterGameBtn').addEventListener('click', leaveRoom);
+
+document.getElementById('soundToggleBtn').addEventListener('click', ()=>{
+  soundMuted = !soundMuted;
+  updateSoundToggleUI();
+  if(!soundMuted) beep(440,0.06,'sine',0.1,0); // quick confirmation blip when un-muting
+});
+function updateSoundToggleUI(){
+  const btn = document.getElementById('soundToggleBtn');
+  btn.textContent = soundMuted ? '🔇' : '🔊';
+  btn.title = LANG==='ja'
+    ? (soundMuted ? 'サウンドをオンにする' : 'サウンドをオフにする')
+    : (soundMuted ? 'Turn sound on' : 'Turn sound off');
+}
+updateSoundToggleUI();
 
 ['langBtnJaTitle','langBtnJaLobby','langBtnJaGame'].forEach(id=>document.getElementById(id).addEventListener('click', ()=>setLang('ja')));
 ['langBtnEnTitle','langBtnEnLobby','langBtnEnGame'].forEach(id=>document.getElementById(id).addEventListener('click', ()=>setLang('en')));
