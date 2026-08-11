@@ -733,9 +733,9 @@
         <div class="mode-title"><span id="modeOnlineCustomTitle">オンラインカスタムマッチ</span><span class="mode-badge" id="modeOnlineCustomBadge">プレイ可能</span></div>
         <div class="mode-desc" id="modeOnlineCustomDesc">ルームコードを発行して、友達とオンラインで対戦します。</div>
       </button>
-      <button class="mode-card" id="modeBtnOnlinePublic" disabled>
-        <div class="mode-title"><span id="modeOnlinePublicTitle">オンライン（公開マッチング）</span><span class="mode-badge" id="modeOnlinePublicBadge">準備中</span></div>
-        <div class="mode-desc" id="modeOnlinePublicDesc">誰でも参加できる自動マッチングは今後実装予定です。</div>
+      <button class="mode-card" id="modeBtnOnlinePublic">
+        <div class="mode-title"><span id="modeOnlinePublicTitle">オンライン（ランダムマッチ）</span><span class="mode-badge" id="modeOnlinePublicBadge">プレイ可能</span></div>
+        <div class="mode-desc" id="modeOnlinePublicDesc">誰でも参加できる自動マッチングで、ランダムな相手と対戦します。</div>
       </button>
     </div>
   </div>
@@ -754,12 +754,12 @@
 
     <div class="lobby-box">
       <div class="lobby-section">
-        <h3 id="lobbyCreateHeading">ルームを作成する（黒番として参加）</h3>
+        <h3 id="lobbyCreateHeading">ルームを作成する（色はランダムに決定）</h3>
         <button class="btn primary" id="createRoomBtn" style="width:100%;">ルームを作成する</button>
       </div>
       <div class="hr-divider"><span id="lobbyOrLabel">または</span></div>
       <div class="lobby-section">
-        <h3 id="lobbyJoinHeading">ルームコードで参加する（白番として参加）</h3>
+        <h3 id="lobbyJoinHeading">ルームコードで参加する（色はランダムに決定）</h3>
         <input class="lobby-input" id="joinCodeInput" maxlength="6" placeholder="ルームコードを入力">
         <button class="btn primary" id="joinRoomBtn" style="width:100%;">参加する</button>
       </div>
@@ -915,7 +915,9 @@ const authReady = new Promise(r => authReadyResolve = r);
 onAuthStateChanged(auth, user => { if(user) authReadyResolve(user); });
 signInAnonymously(auth).catch(err => { console.error('Firebase anonymous auth failed', err); authReadyResolve(null); });
 
+const TICKET_TTL_MS = 60000; // a waiting ticket older than this is treated as stale/abandoned
 let unsubscribeRoom = null;
+let unsubscribeTicket = null;
 window.psyFirebase = {
   async ready(){ return await authReady; },
   // IMPORTANT: never get(ref(db,'rooms/'+code)) as a whole node. Firebase
@@ -936,17 +938,30 @@ window.psyFirebase = {
   async claimGuest(code){
     const user=await authReady; if(!user) throw new Error('auth');
 
-    // The white slot is the single source of truth for admission.
-    // Re-entering with the same anonymous Firebase UID is allowed.
-    const whiteRef=ref(db,'rooms/'+code+'/players/white');
-    const claim=await runTransaction(whiteRef, current=>{
+    const playersSnap=await get(ref(db,'rooms/'+code+'/players'));
+    if(!playersSnap.exists()) return {ok:false, reason:'not-found'};
+    const players=playersSnap.val()||{};
+    // Whichever color slot is still empty is the one to claim. If both are
+    // taken, allow rejoining only if it's already ours (e.g. a page reload).
+    let openKey=null;
+    if(!players.black) openKey='black';
+    else if(!players.white) openKey='white';
+    else if(players.black===user.uid) openKey='black';
+    else if(players.white===user.uid) openKey='white';
+    if(!openKey) return {ok:false, reason:'full'};
+    const openRole = openKey==='black' ? 1 : 2;
+
+    // That slot is the single source of truth for admission. Re-entering
+    // with the same anonymous Firebase UID is allowed.
+    const slotRef=ref(db,'rooms/'+code+'/players/'+openKey);
+    const claim=await runTransaction(slotRef, current=>{
       if(current && current!==user.uid) return;
       return user.uid;
     }, {applyLocally:false});
 
     if(!claim.committed) return {ok:false, reason:'full'};
 
-    // Mark White as joined in state. Plain read-then-write (not a
+    // Mark this role as joined in state. Plain read-then-write (not a
     // transaction) - nobody else is writing state at this exact moment
     // (the host is idle waiting), so the tiny race window is an acceptable
     // trade for avoiding transaction-specific edge cases. If this fails we
@@ -955,7 +970,7 @@ window.psyFirebase = {
     try{
       const stateSnap=await get(ref(db,'rooms/'+code+'/state'));
       if(!stateSnap.exists()){
-        await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
+        await runTransaction(slotRef, current=>current===user.uid?null:current, {applyLocally:false});
         return {ok:false, reason:'not-found'};
       }
       joinedState=stateSnap.val();
@@ -966,17 +981,18 @@ window.psyFirebase = {
       await set(ref(db,'rooms/'+code+'/state'), joinedState);
     }catch(e){
       console.error('claimGuest: state update failed:', e && e.code, e && e.message);
-      await runTransaction(whiteRef, current=>current===user.uid?null:current, {applyLocally:false});
+      await runTransaction(slotRef, current=>current===user.uid?null:current, {applyLocally:false});
       throw new Error('state-join-update-failed: '+(e && (e.code||e.message)||'unknown'));
     }
 
-    const whiteHandSnap=await get(ref(db,'rooms/'+code+'/hands/white'));
-    return {ok:true, room:{ state: joinedState, hands:{ white: whiteHandSnap.exists()?whiteHandSnap.val():[] } }};
+    const myHandSnap=await get(ref(db,'rooms/'+code+'/hands/'+openKey));
+    return {ok:true, role:openRole, room:{ state: joinedState, hands:{ [openKey]: myHandSnap.exists()?myHandSnap.val():[] } }};
   },
-  async releaseGuest(code){
+  async releaseGuest(code, role){
     const user=await authReady; if(!user || !code) return false;
-    const whiteRef=ref(db,'rooms/'+code+'/players/white');
-    const released=await runTransaction(whiteRef, current=>{
+    const key = role===1 ? 'black' : 'white';
+    const slotRef=ref(db,'rooms/'+code+'/players/'+key);
+    const released=await runTransaction(slotRef, current=>{
       if(current!==user.uid) return;
       return null;
     }, {applyLocally:false});
@@ -986,24 +1002,26 @@ window.psyFirebase = {
     await runTransaction(stateRef, state=>{
       if(!state) return state;
       state.joined=state.joined||{1:true,2:false};
-      state.joined[2]=false;
+      state.joined[role]=false;
       state.seq=(state.seq||0)+1;
       return state;
     }, {applyLocally:false});
     return true;
   },
-  async createRoom(code,state,blackHand,whiteHand){
+  async createRoom(code,creatorRole,state,creatorHand,otherHand){
     const user=await authReady; if(!user) throw new Error('auth');
+    const creatorKey = creatorRole===1 ? 'black' : 'white';
+    const otherKey = creatorRole===1 ? 'white' : 'black';
     // Written as separate scoped writes (not one set() on the room root) so
     // each one is checked against its OWN .write rule. players must land
-    // first: hands/black's rule and hands/white's bootstrap-write rule both
-    // check players/black, and hands/white's rule also checks that
-    // players/white does not exist yet.
-    await set(ref(db,'rooms/'+code+'/players'), {black:user.uid});
+    // first: each hands/<color> rule checks players/<color>, and the OTHER
+    // color's rule also checks that its own players slot doesn't exist yet
+    // (the creator bootstraps both hands before anyone else has joined).
+    await set(ref(db,'rooms/'+code+'/players'), {[creatorKey]:user.uid});
     await set(ref(db,'rooms/'+code+'/state'), state);
     await set(ref(db,'rooms/'+code+'/createdAt'), Date.now());
-    await set(ref(db,'rooms/'+code+'/hands/black'), blackHand);
-    await set(ref(db,'rooms/'+code+'/hands/white'), whiteHand);
+    await set(ref(db,'rooms/'+code+'/hands/'+creatorKey), creatorHand);
+    await set(ref(db,'rooms/'+code+'/hands/'+otherKey), otherHand);
     return true;
   },
   async pushHand(code,colorKey,hand){
@@ -1053,6 +1071,54 @@ window.psyFirebase = {
     for(const p of paths){
       try{ await remove(ref(db,'rooms/'+code+'/'+p)); }catch(e){}
     }
+  },
+
+  // ---------- random matchmaking queue ----------
+  // A "ticket" is a lightweight, short-lived request to be paired with
+  // another waiting player. Tickets carry no game data, only uid/timestamps
+  // and (once matched) the resulting room code - so a broad read/write rule
+  // for any authenticated user is fine here, same as rooms/*/players|state.
+  async findWaitingTicket(){
+    const user=await authReady; if(!user) throw new Error('auth');
+    const snap=await get(ref(db,'matchmaking'));
+    if(!snap.exists()) return null;
+    const tickets=snap.val();
+    const now=Date.now();
+    let best=null;
+    for(const id of Object.keys(tickets)){
+      const t=tickets[id];
+      if(t && t.status==='waiting' && t.uid!==user.uid && (now-t.createdAt)<TICKET_TTL_MS){
+        if(!best || t.createdAt<best.createdAt) best={id,...t};
+      }
+    }
+    return best;
+  },
+  async claimTicket(ticketId){
+    const user=await authReady; if(!user) throw new Error('auth');
+    const statusRef=ref(db,'matchmaking/'+ticketId+'/status');
+    const result=await runTransaction(statusRef, cur=>{
+      if(cur!=='waiting') return; // already claimed, or gone - abort
+      return 'matched';
+    }, {applyLocally:false});
+    return result.committed;
+  },
+  async createTicket(){
+    const user=await authReady; if(!user) throw new Error('auth');
+    const ticketId='mm-'+Date.now()+'-'+Math.random().toString(36).slice(2,8);
+    await set(ref(db,'matchmaking/'+ticketId), {uid:user.uid, createdAt:Date.now(), status:'waiting'});
+    return ticketId;
+  },
+  async setTicketMatch(ticketId, roomCode){
+    await set(ref(db,'matchmaking/'+ticketId+'/roomCode'), roomCode);
+  },
+  listenTicket(ticketId, cb){
+    if(unsubscribeTicket) unsubscribeTicket();
+    const r=ref(db,'matchmaking/'+ticketId);
+    unsubscribeTicket=onValue(r, s=>cb(s.exists()?s.val():null));
+  },
+  unlistenTicket(){ if(unsubscribeTicket){ unsubscribeTicket(); unsubscribeTicket=null; } },
+  async cancelTicket(ticketId){
+    try{ await remove(ref(db,'matchmaking/'+ticketId)); }catch(e){}
   }
 };
 window.dispatchEvent(new Event('psyFirebaseReady'));
@@ -1104,13 +1170,13 @@ const STR = {
     modeLocalDesc:'同じ画面で黒番・白番を交互に操作して対戦します。',
     modeOnlineCustomTitle:'オンラインカスタムマッチ', modeOnlineCustomBadge:'プレイ可能',
     modeOnlineCustomDesc:'ルームコードを発行して、友達とオンラインで対戦します。',
-    modeOnlinePublicTitle:'オンライン（公開マッチング）', modeOnlinePublicBadge:'準備中',
-    modeOnlinePublicDesc:'誰でも参加できる自動マッチングは今後実装予定です。',
+    modeOnlinePublicTitle:'オンライン（ランダムマッチ）', modeOnlinePublicBadge:'プレイ可能',
+    modeOnlinePublicDesc:'誰でも参加できる自動マッチングで、ランダムな相手と対戦します。',
     lobbyH1:'オンラインカスタムマッチ',
-    lobbyCreateHeading:'ルームを作成する（黒番として参加）',
+    lobbyCreateHeading:'ルームを作成する（色はランダムに決定）',
     createRoomBtn:'ルームを作成する',
     lobbyOrLabel:'または',
-    lobbyJoinHeading:'ルームコードで参加する（白番として参加）',
+    lobbyJoinHeading:'ルームコードで参加する（色はランダムに決定）',
     joinCodeInputPlaceholder:'ルームコードを入力',
     joinRoomBtn:'参加する',
     lobbyBackBtn:'← タイトルへ戻る',
@@ -1121,6 +1187,7 @@ const STR = {
     lobbyErrorFull:'このルームはすでに満員です。',
     lobbyErrorStorage:'オンライン機能を利用できませんでした。時間を置いて再度お試しください。',
     waitingMsg:'相手の参加を待っています…',
+    waitingRandomMsg:'対戦相手を探しています…',
     waitingHint:'このコードを対戦相手に伝えてください',
     waitingCancelBtn:'キャンセルしてタイトルへ',
     backToTitleLabel:'タイトルへ',
@@ -1155,13 +1222,13 @@ const STR = {
     modeLocalDesc:'Play both Black and White on the same screen, taking turns.',
     modeOnlineCustomTitle:'Online Custom Match', modeOnlineCustomBadge:'Available',
     modeOnlineCustomDesc:'Create a room code and play online with a friend.',
-    modeOnlinePublicTitle:'Online (Public Matchmaking)', modeOnlinePublicBadge:'Coming Soon',
-    modeOnlinePublicDesc:'Open matchmaking with random opponents is planned for a future update.',
+    modeOnlinePublicTitle:'Online (Random Match)', modeOnlinePublicBadge:'Available',
+    modeOnlinePublicDesc:'Automatic matchmaking with a random opponent, open to anyone.',
     lobbyH1:'Online Custom Match',
-    lobbyCreateHeading:'Create a room (join as Black)',
+    lobbyCreateHeading:'Create a room (color assigned randomly)',
     createRoomBtn:'Create Room',
     lobbyOrLabel:'or',
-    lobbyJoinHeading:'Join with a room code (join as White)',
+    lobbyJoinHeading:'Join with a room code (color assigned randomly)',
     joinCodeInputPlaceholder:'Enter room code',
     joinRoomBtn:'Join Room',
     lobbyBackBtn:'← Back to Title',
@@ -1172,6 +1239,7 @@ const STR = {
     lobbyErrorFull:'This room is already full.',
     lobbyErrorStorage:'Online features are unavailable right now. Please try again later.',
     waitingMsg:'Waiting for your opponent to join…',
+    waitingRandomMsg:'Searching for an opponent…',
     waitingHint:'Share this code with your opponent',
     waitingCancelBtn:'Cancel and return to Title',
     backToTitleLabel:'Title',
@@ -1282,6 +1350,10 @@ let onlineWaitingForOpponent = false;
 let onlineJoinPending = false;
 let onlineCreatePending = false;
 let handCounts = {1:0, 2:0};        // opponent's hand SIZE only (contents hidden in online mode)
+let onlineIsCreator = false;        // true if I created the room, regardless of which color I got
+let randomMatchTicketId = null;     // my own matchmaking ticket, while waiting to be paired
+let randomMatchSearching = false;   // true while actively searching (covers pre-ticket + waiting)
+let randomMatchRetryTimer = null;   // periodic re-scan so two simultaneous waiters still pair up
 let mindReadOp = null;              // cross-player mind-read request/reveal/swap handshake object
 let mindReadProcessedIds = new Set(); // guards against re-processing the same handshake phase twice
 
@@ -2760,7 +2832,16 @@ function showLobbyScreen(){
 function showGameScreen(){ showScreen('screen-game'); }
 
 function showWaitingOverlay(code){
+  document.getElementById('waitingMsg').textContent = tr('waitingMsg');
+  document.getElementById('waitingRoomCode').style.display = '';
+  document.getElementById('waitingHint').style.display = '';
   document.getElementById('waitingRoomCode').textContent = code;
+  document.getElementById('waitingOverlay').classList.add('show');
+}
+function showRandomMatchWaitingOverlay(){
+  document.getElementById('waitingMsg').textContent = tr('waitingRandomMsg');
+  document.getElementById('waitingRoomCode').style.display = 'none';
+  document.getElementById('waitingHint').style.display = 'none';
   document.getElementById('waitingOverlay').classList.add('show');
 }
 function hideWaitingOverlay(){
@@ -2863,6 +2944,40 @@ function startPolling(){
   });
 }
 function stopPolling(){ if(window.psyFirebase) window.psyFirebase.unlisten(); if(onlinePollTimer){clearInterval(onlinePollTimer);onlinePollTimer=null;} }
+async function enterRoomAsHost(code, myRole){
+  const otherRole = 3-myRole;
+  onlineRoomCode=code; myPlayerNumber=myRole; onlineMode=true; onlineIsCreator=true;
+  onlineJoined={[myRole]:true, [otherRole]:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0;
+  mindReadOp=null; mindReadProcessedIds=new Set();
+  initGame();
+  handCounts = {1:hands[1].length, 2:hands[2].length};
+  const myHand = hands[myRole];
+  const otherHand = hands[otherRole];
+  const state=serializeState(1);
+  await window.psyFirebase.createRoom(code,myRole,state,myHand,otherHand);
+  onlineLastAppliedSeq=1;
+  // ホスト自身のランタイムからも相手の手札の実データを破棄し、以後は枚数だけを保持する
+  hands[otherRole] = Array.from({length:otherHand.length}, (_,i)=>({id:'hidden-'+otherRole+'-'+i, type:'__hidden__'}));
+  showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
+}
+
+async function enterRoomAsGuest(code){
+  const result=await window.psyFirebase.claimGuest(code);
+  if(!result?.ok) return result;
+  const room=result.room;
+  const myRole = result.role;
+  const colorKey = myRole===1 ? 'black' : 'white';
+  onlineRoomCode=code; myPlayerNumber=myRole; onlineMode=true; onlineIsCreator=false;
+  mindReadOp=null; mindReadProcessedIds=new Set();
+  applyRemoteState(room.state);
+  hands[myRole] = (room.hands && room.hands[colorKey]) ? room.hands[colorKey] : [];
+  handCounts[myRole] = hands[myRole].length;
+  handRevealed = {1: myRole===1, 2: myRole===2};
+  onlineWaitingForOpponent=false;
+  showGameScreen(); updateOnlineInfoBar(); render(); startPolling();
+  return {ok:true};
+}
+
 async function createRoom(){
   if(onlineCreatePending) return;
   onlineCreatePending=true;
@@ -2873,20 +2988,8 @@ async function createRoom(){
     const user=await waitForFirebase(); if(!user) throw new Error('auth');
     let code,existing;
     do{ code=generateRoomCode(); existing=await window.psyFirebase.getRoom(code); }while(existing);
-
-    onlineRoomCode=code; myPlayerNumber=1; onlineMode=true;
-    onlineJoined={1:true,2:false}; onlineWaitingForOpponent=true; onlineLastAppliedSeq=0;
-    mindReadOp=null; mindReadProcessedIds=new Set();
-    initGame();
-    handCounts = {1:hands[1].length, 2:hands[2].length};
-    const blackHand = hands[1];
-    const whiteHand = hands[2];
-    const state=serializeState(1);
-    await window.psyFirebase.createRoom(code,state,blackHand,whiteHand);
-    onlineLastAppliedSeq=1;
-    // ホスト自身のランタイムからもゲスト(白)の手札の実データを破棄し、以後は枚数だけを保持する
-    hands[2] = Array.from({length:whiteHand.length}, (_,i)=>({id:'hidden-2-'+i, type:'__hidden__'}));
-    showGameScreen(); updateOnlineInfoBar(); showWaitingOverlay(code); startPolling();
+    const myRole = Math.random()<0.5 ? 1 : 2; // room creator no longer always gets black
+    await enterRoomAsHost(code, myRole);
   }catch(e){
     console.error('createRoom failed',e);
     msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorStorage');
@@ -2916,22 +3019,12 @@ async function joinRoom(){
       msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorNotFound'); return;
     }
 
-    const result=await window.psyFirebase.claimGuest(code);
+    const result=await enterRoomAsGuest(code);
     if(!result?.ok){
       msgEl.className='lobby-msg error';
       msgEl.textContent=result?.reason==='not-found'?tr('lobbyErrorNotFound'):tr('lobbyErrorFull');
       return;
     }
-
-    const room=result.room;
-    onlineRoomCode=code; myPlayerNumber=2; onlineMode=true;
-    mindReadOp=null; mindReadProcessedIds=new Set();
-    applyRemoteState(room.state);
-    hands[2] = (room.hands && room.hands.white) ? room.hands.white : [];
-    handCounts[2] = hands[2].length;
-    handRevealed = {1:false, 2:true};
-    onlineWaitingForOpponent=false;
-    showGameScreen(); updateOnlineInfoBar(); render(); startPolling();
   }catch(e){
     console.error('joinRoom failed',e);
     msgEl.className='lobby-msg error'; msgEl.textContent=tr('lobbyErrorStorage');
@@ -2939,6 +3032,100 @@ async function joinRoom(){
     onlineJoinPending=false; btn.disabled=false;
   }
 }
+
+// ---------- random matchmaking ----------
+async function startRandomMatch(){
+  if(onlineCreatePending || onlineJoinPending || randomMatchSearching) return;
+  const btn = document.getElementById('modeBtnOnlinePublic');
+  if(btn) btn.disabled = true;
+  randomMatchSearching = true;
+  try{
+    const user = await waitForFirebase(); if(!user) throw new Error('auth');
+    showRandomMatchWaitingOverlay();
+    await attemptMatchOrWait();
+  }catch(e){
+    console.error('startRandomMatch failed', e);
+    randomMatchSearching = false;
+    if(btn) btn.disabled = false;
+    hideWaitingOverlay();
+    showTitleScreen();
+  }
+}
+
+async function attemptMatchOrWait(){
+  if(!randomMatchSearching) return; // cancelled while an earlier step was in flight
+  try{
+    const existing = await window.psyFirebase.findWaitingTicket();
+    if(existing){
+      const claimed = await window.psyFirebase.claimTicket(existing.id);
+      if(claimed && randomMatchSearching){
+        // We're becoming the host. Give up our own ticket first, if we had
+        // one (we were waiting too, and just found someone else instead).
+        if(randomMatchTicketId){
+          window.psyFirebase.unlistenTicket();
+          await window.psyFirebase.cancelTicket(randomMatchTicketId);
+          randomMatchTicketId = null;
+        }
+        let code, roomExisting;
+        do{ code=generateRoomCode(); roomExisting=await window.psyFirebase.getRoom(code); }while(roomExisting);
+        await enterRoomAsHost(code, Math.random()<0.5 ? 1 : 2);
+        await window.psyFirebase.setTicketMatch(existing.id, code);
+        randomMatchSearching = false;
+        hideWaitingOverlay();
+        const btn = document.getElementById('modeBtnOnlinePublic');
+        if(btn) btn.disabled = false;
+        return;
+      }
+      // claim lost the race (someone else took it first) - fall through
+    }
+    if(!randomMatchSearching) return;
+    if(!randomMatchTicketId){
+      randomMatchTicketId = await window.psyFirebase.createTicket();
+      window.psyFirebase.listenTicket(randomMatchTicketId, async (data)=>{
+        if(!randomMatchSearching) return;
+        if(data && data.roomCode){
+          window.psyFirebase.unlistenTicket();
+          if(randomMatchRetryTimer){ clearTimeout(randomMatchRetryTimer); randomMatchRetryTimer=null; }
+          randomMatchTicketId = null;
+          randomMatchSearching = false;
+          const result = await enterRoomAsGuest(data.roomCode);
+          const btn = document.getElementById('modeBtnOnlinePublic');
+          if(btn) btn.disabled = false;
+          if(!result?.ok){
+            hideWaitingOverlay();
+            showTitleScreen();
+          } else {
+            hideWaitingOverlay();
+          }
+        }
+      });
+    }
+    // Re-scan periodically: if another player starts waiting around the same
+    // moment as us, neither of us would otherwise discover the other (we're
+    // both just listening on our own ticket). Periodically checking the
+    // queue lets whichever of us scans next pick up and host the match.
+    randomMatchRetryTimer = setTimeout(()=>{ randomMatchRetryTimer=null; attemptMatchOrWait(); }, 3000);
+  }catch(e){
+    console.error('attemptMatchOrWait failed', e);
+    randomMatchRetryTimer = setTimeout(()=>{ randomMatchRetryTimer=null; attemptMatchOrWait(); }, 4000);
+  }
+}
+
+async function cancelRandomMatch(){
+  randomMatchSearching = false;
+  if(randomMatchRetryTimer){ clearTimeout(randomMatchRetryTimer); randomMatchRetryTimer=null; }
+  window.psyFirebase.unlistenTicket();
+  if(randomMatchTicketId){
+    const id = randomMatchTicketId;
+    randomMatchTicketId = null;
+    try{ await window.psyFirebase.cancelTicket(id); }catch(e){}
+  }
+  const btn = document.getElementById('modeBtnOnlinePublic');
+  if(btn) btn.disabled = false;
+  hideWaitingOverlay();
+  showTitleScreen();
+}
+
 async function requestResign(){
   if(!onlineMode || gameOver || onlineWaitingForOpponent){
     // local mode, game already ended naturally, or no real match has
@@ -2970,6 +3157,9 @@ async function leaveRoom(){
   turnActionLog=[]; lastTurnLog=null;
   deckReshuffleNotice=false; lastBoardManipEffect=null;
   resignedBy=null;
+  if(randomMatchRetryTimer){ clearTimeout(randomMatchRetryTimer); randomMatchRetryTimer=null; }
+  randomMatchSearching=false; randomMatchTicketId=null;
+  onlineIsCreator=false;
   hideWaitingOverlay();
   document.getElementById('onlineInfoBar').style.display='none';
   document.getElementById('overlay').classList.remove('show');
@@ -2978,8 +3168,8 @@ async function leaveRoom(){
   // Then clean up Firebase best-effort.
   if(!code||!window.psyFirebase) return;
   try{
-    if(role===1) await window.psyFirebase.removeRoom(code);
-    else if(role===2) await window.psyFirebase.releaseGuest(code);
+    if(onlineIsCreator) await window.psyFirebase.removeRoom(code);
+    else if(role===1 || role===2) await window.psyFirebase.releaseGuest(code, role);
   }catch(e){
     console.warn('leaveRoom cleanup failed',e);
   }
@@ -3088,10 +3278,14 @@ document.getElementById('modeBtnOnlineCustom').addEventListener('click', async (
   showLobbyScreen();
   try{ await waitForFirebase(); }catch(e){ if(msg){msg.className='lobby-msg error';msg.textContent=tr('lobbyErrorStorage');} }
 });
+document.getElementById('modeBtnOnlinePublic').addEventListener('click', ()=>{ startRandomMatch(); });
 document.getElementById('lobbyBackBtn').addEventListener('click', showTitleScreen);
 document.getElementById('createRoomBtn').addEventListener('click', createRoom);
 document.getElementById('joinRoomBtn').addEventListener('click', joinRoom);
-document.getElementById('waitingCancelBtn').addEventListener('click', leaveRoom);
+document.getElementById('waitingCancelBtn').addEventListener('click', ()=>{
+  if(randomMatchSearching || randomMatchTicketId){ cancelRandomMatch(); }
+  else { leaveRoom(); }
+});
 document.getElementById('backToTitleBtn').addEventListener('click', ()=>{
   if(onlineMode){ requestResign(); } else { showTitleScreen(); }
 });
